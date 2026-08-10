@@ -56,7 +56,7 @@ main {
 
 /* Roadways Music Logo Container - Phase 1.6 Vertical Position Upward (margin-top: 8vh) */
 .roadways-logo-container {
-  margin-top: 8vh; /* Moved upward closer to top online badge matching saloon.wtf reference */
+  margin-top: 8vh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -138,10 +138,15 @@ main {
   animation-play-state: running; /* Resumes spinning from exact current angle */
 }
 
-/* Custom Seek Slider */
+/* Draggable Seek Slider - Phase 1.7 Pointer Interaction */
+#progress-bar {
+  touch-action: none; /* Prevents mobile scroll while dragging timeline */
+  user-select: none;
+}
+
 .slider-container {
   position: relative;
-  height: 8px;
+  height: 12px;
   width: 100%;
   cursor: pointer;
   display: flex;
@@ -163,7 +168,7 @@ main {
   height: 100%;
   border-radius: 9999px;
   background-color: rgba(255, 255, 255, 0.9);
-  transition: width 0.1s linear;
+  transition: width 0.05s linear;
 }
 
 .slider-thumb {
@@ -179,7 +184,8 @@ main {
   transition: opacity 0.15s ease;
 }
 
-.slider-container:hover .slider-thumb {
+.slider-container:hover .slider-thumb,
+.slider-container:active .slider-thumb {
   opacity: 1;
 }
 

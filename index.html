@@ -26,14 +26,11 @@
       4:19 pm
     </div>
 
-    <!-- TOP CENTER: Live Listener Indicator -->
+    <!-- TOP CENTER: Roadways Passenger Indicator (Phase 1.7 Bus Presence Polish) -->
     <div class="fixed left-1/2 top-5 z-20 -translate-x-1/2 inline-flex items-center gap-2 rounded-full py-1.5 pl-3 pr-4 text-sm font-medium text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)] glass-pill" aria-live="polite">
-      <span class="relative flex h-2.5 w-2.5">
-        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
-        <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.9)]"></span>
-      </span>
+      <span class="text-base select-none">🚌</span>
       <span id="online-count" class="tabular-nums">26</span>
-      <span class="text-white/70">online</span>
+      <span class="text-white/70">passengers onboard</span>
     </div>
 
     <!-- TOP RIGHT: External Music Links (Spotify & YT Music) -->
@@ -61,14 +58,14 @@
       </a>
     </div>
 
-    <!-- CENTER HERO: Roadways Music Transparent Logo Artwork Overlay (Fontt.png - 10-15% Moderately Larger) -->
+    <!-- CENTER HERO: Roadways Music Transparent Logo Artwork Overlay (Fontt.png) -->
     <div class="roadways-logo-container">
       <h1>
         <img src="assets/Fontt.png" alt="Roadways Music Logo" class="roadways-logo-img" />
       </h1>
     </div>
 
-    <!-- BOTTOM FLOATING MUSIC PLAYER PILL (Fixed & Independently Positioned, Slightly Higher) -->
+    <!-- BOTTOM FLOATING MUSIC PLAYER PILL -->
     <div class="fixed-player-wrapper">
       <div class="w-full max-w-xl">
         <div class="group relative flex items-center gap-4 rounded-full p-3 pr-5 glass-player">
@@ -80,13 +77,13 @@
             <div class="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/80 ring-1 ring-white/60 shadow-sm z-10"></div>
           </div>
 
-          <!-- Song Metadata & Progress Timeline -->
+          <!-- Song Metadata & Draggable Progress Timeline -->
           <div class="min-w-0 flex-1">
             <p id="song-title" class="truncate text-[15px] font-semibold text-white drop-shadow-sm">Woh Meri Neend Mera Chain</p>
             <p id="artist-name" class="truncate text-[13px] text-white/70">Sadhana Sargam</p>
             
             <div class="mt-2">
-              <div id="progress-bar" class="group/bar relative h-2 w-full cursor-pointer" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="100">
+              <div id="progress-bar" class="slider-container group/bar relative h-3 w-full cursor-pointer" role="slider" aria-label="Seek timeline" aria-valuemin="0" aria-valuemax="100">
                 <div class="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/20">
                   <div id="progress-fill" class="h-full rounded-full bg-white/90" style="width: 66.5%;"></div>
                 </div>

@@ -1,4 +1,4 @@
-// Roadways Music Application - Core Logic Architecture (Phase 1.3 Polish)
+// Roadways Music Application - Core Logic Architecture (Phase 1.7 UI Interaction Polish)
 
 class RoadwaysMusicPlayer {
   constructor() {
@@ -6,6 +6,7 @@ class RoadwaysMusicPlayer {
     this.isPlaying = false;
     this.currentTime = 197; // 3:17 placeholder for Phase 1
     this.duration = 296;    // 4:56 placeholder for Phase 1
+    this.isDragging = false;
     
     // DOM Elements
     this.clockElement = document.getElementById('live-clock');
@@ -49,7 +50,7 @@ class RoadwaysMusicPlayer {
     setInterval(updateTime, 1000);
   }
 
-  // 2. TOP CENTER: Live listener indicator (e.g., ● 26 online)
+  // 2. TOP CENTER: Roadways Passenger Indicator (e.g., 🚌 26 passengers onboard)
   startLivePresenceSimulator() {
     let currentCount = 26;
     const updateCount = () => {
@@ -80,7 +81,7 @@ class RoadwaysMusicPlayer {
     this.updateProgressUI();
   }
 
-  // 4. PLAY / PAUSE CONTROLS ROTATION (Preserves exact rotation angle when paused)
+  // 4. PLAY / PAUSE CONTROLS ROTATION
   play() {
     this.isPlaying = true;
     if (this.albumArtElement) {
@@ -131,9 +132,12 @@ class RoadwaysMusicPlayer {
     if (this.isPlaying) this.play();
   }
 
-  seek(percentage) {
-    this.currentTime = Math.floor((percentage / 100) * this.duration);
+  // 5. SEEK TO PERCENTAGE (Architecture ready for Phase 2 audio player connection)
+  seekToPercent(percentage) {
+    const clampedPercent = Math.max(0, Math.min(100, percentage));
+    this.currentTime = Math.floor((clampedPercent / 100) * this.duration);
     this.updateProgressUI();
+    console.log(`[Phase 1.7] Seek to ${clampedPercent.toFixed(1)}% (${this.formatTime(this.currentTime)})`);
   }
 
   updateProgressUI() {
@@ -151,6 +155,7 @@ class RoadwaysMusicPlayer {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   }
 
+  // 6. DRAGGABLE SEEK BAR LOGIC (Pointer Events: Mouse, Trackpad, Touch)
   setupEventListeners() {
     if (this.playBtn) {
       this.playBtn.addEventListener('click', () => this.togglePlay());
@@ -163,13 +168,41 @@ class RoadwaysMusicPlayer {
     }
 
     if (this.progressBar) {
-      this.progressBar.addEventListener('click', (e) => {
+      const updateDragPosition = (e) => {
         const rect = this.progressBar.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
-        const width = rect.width;
-        const percentage = Math.max(0, Math.min(100, (clickX / width) * 100));
-        this.seek(percentage);
+        const percentage = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
+        this.seekToPercent(percentage);
+        return percentage;
+      };
+
+      this.progressBar.addEventListener('pointerdown', (e) => {
+        this.isDragging = true;
+        try {
+          this.progressBar.setPointerCapture(e.pointerId);
+        } catch(err) {}
+        updateDragPosition(e);
       });
+
+      this.progressBar.addEventListener('pointermove', (e) => {
+        if (this.isDragging) {
+          updateDragPosition(e);
+        }
+      });
+
+      const handlePointerRelease = (e) => {
+        if (this.isDragging) {
+          const finalPercent = updateDragPosition(e);
+          this.seekToPercent(finalPercent);
+          this.isDragging = false;
+          try {
+            this.progressBar.releasePointerCapture(e.pointerId);
+          } catch(err) {}
+        }
+      };
+
+      this.progressBar.addEventListener('pointerup', handlePointerRelease);
+      this.progressBar.addEventListener('pointercancel', handlePointerRelease);
     }
 
     // Keyboard Shortcuts
