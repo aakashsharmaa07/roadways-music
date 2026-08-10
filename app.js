@@ -1,13 +1,18 @@
-// Roadways Music Application - Core Logic Architecture (Phase 1.7 UI Interaction Polish)
+// Roadways Music Application - Core Logic Architecture (Phase 2 Prep: Glass Clock & Track Reset)
 
 class RoadwaysMusicPlayer {
   constructor() {
     this.currentIndex = 0;
     this.isPlaying = false;
-    this.currentTime = 197; // 3:17 placeholder for Phase 1
-    this.duration = 296;    // 4:56 placeholder for Phase 1
+    this.currentTime = 0; // Starts cleanly at 0:00 for the loaded song
+    this.duration = 296;  // Duration dynamically set per track
     this.isDragging = false;
     
+    // High Precision Playback Clock State
+    this.playStartedAt = 0;
+    this.startPosition = 0;
+    this.animFrameId = null;
+
     // DOM Elements
     this.clockElement = document.getElementById('live-clock');
     this.onlineCountElement = document.getElementById('online-count');
@@ -32,7 +37,7 @@ class RoadwaysMusicPlayer {
     this.setupEventListeners();
   }
 
-  // 1. TOP LEFT: Real-time clock (e.g. 4:19 pm)
+  // 1. TOP LEFT: Real-time clock (Wrapped in small glass pill)
   startClock() {
     const updateTime = () => {
       const now = new Date();
@@ -50,7 +55,7 @@ class RoadwaysMusicPlayer {
     setInterval(updateTime, 1000);
   }
 
-  // 2. TOP CENTER: Roadways Passenger Indicator (e.g., 🚌 26 passengers onboard)
+  // 2. TOP CENTER: Roadways Passenger Indicator Simulator
   startLivePresenceSimulator() {
     let currentCount = 26;
     const updateCount = () => {
@@ -59,11 +64,22 @@ class RoadwaysMusicPlayer {
       if (this.onlineCountElement) {
         this.onlineCountElement.textContent = currentCount;
       }
+      this.triggerPassengerAnimation();
     };
     setInterval(updateCount, 12000);
   }
 
-  // 3. SONG METADATA LOADING ARCHITECTURE
+  // 3. REUSABLE BUS MICRO-ANIMATION TRIGGER
+  triggerPassengerAnimation() {
+    const busSvg = document.getElementById('bus-svg');
+    if (busSvg) {
+      busSvg.classList.remove('bus-idle-anim');
+      void busSvg.offsetWidth; // trigger reflow
+      busSvg.classList.add('bus-idle-anim');
+    }
+  }
+
+  // 4. SONG METADATA & STATE INITIALIZATION (Centralized Reset for Every New Track)
   loadSong(index) {
     if (index < 0) index = PLAYLIST.length - 1;
     if (index >= PLAYLIST.length) index = 0;
@@ -76,13 +92,64 @@ class RoadwaysMusicPlayer {
       this.albumArtElement.src = track.artwork;
     }
     
+    // Set duration from track metadata
     this.duration = track.durationSeconds || 296;
-    this.currentTime = Math.floor(this.duration * 0.665); // ~3:17
+    
+    // Complete playback reset to 0:00 for the newly loaded song
+    this.currentTime = 0;
+    this.startPosition = 0;
+    this.playStartedAt = performance.now();
+    
+    // Immediately update UI to 0:00 and 0%
     this.updateProgressUI();
+    
+    // Preserve current PLAY/PAUSE state
+    if (this.isPlaying) {
+      this.startPlaybackClock();
+    } else {
+      this.stopPlaybackClock();
+    }
+
+    console.log(`[Phase 2 Prep] Loaded track ${this.currentIndex + 1}: ${track.title} (Duration: ${this.formatTime(this.duration)})`);
   }
 
-  // 4. PLAY / PAUSE CONTROLS ROTATION
+  // 5. HIGH-PRECISION DRIFT-FREE PLAYBACK CLOCK
+  startPlaybackClock() {
+    this.playStartedAt = performance.now();
+    this.startPosition = this.currentTime;
+    
+    const tick = () => {
+      if (!this.isPlaying) return;
+      
+      const elapsed = (performance.now() - this.playStartedAt) / 1000;
+      this.currentTime = Math.min(this.duration, this.startPosition + elapsed);
+      this.updateProgressUI();
+      
+      if (this.currentTime >= this.duration) {
+        this.handleSongEnded();
+        return;
+      }
+      
+      this.animFrameId = requestAnimationFrame(tick);
+    };
+    
+    if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
+    this.animFrameId = requestAnimationFrame(tick);
+  }
+
+  stopPlaybackClock() {
+    if (this.animFrameId) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
+  }
+
+  // 6. PLAY / PAUSE CONTROLS
   play() {
+    if (this.currentTime >= this.duration) {
+      this.currentTime = 0;
+    }
+    
     this.isPlaying = true;
     if (this.albumArtElement) {
       this.albumArtElement.classList.add('is-playing');
@@ -96,10 +163,12 @@ class RoadwaysMusicPlayer {
         </svg>
       `;
     }
+    this.startPlaybackClock();
   }
 
   pause() {
     this.isPlaying = false;
+    this.stopPlaybackClock();
     if (this.albumArtElement) {
       this.albumArtElement.classList.remove('is-playing');
     }
@@ -124,24 +193,35 @@ class RoadwaysMusicPlayer {
 
   next() {
     this.loadSong(this.currentIndex + 1);
-    if (this.isPlaying) this.play();
   }
 
   previous() {
     this.loadSong(this.currentIndex - 1);
-    if (this.isPlaying) this.play();
   }
 
-  // 5. SEEK TO PERCENTAGE (Architecture ready for Phase 2 audio player connection)
+  // 7. SEEK TO PERCENTAGE (Operates relative to currently loaded song's duration)
   seekToPercent(percentage) {
     const clampedPercent = Math.max(0, Math.min(100, percentage));
-    this.currentTime = Math.floor((clampedPercent / 100) * this.duration);
+    this.currentTime = (clampedPercent / 100) * this.duration;
     this.updateProgressUI();
-    console.log(`[Phase 1.7] Seek to ${clampedPercent.toFixed(1)}% (${this.formatTime(this.currentTime)})`);
+    
+    // If playing while seeking, reset clock reference point smoothly
+    if (this.isPlaying) {
+      this.playStartedAt = performance.now();
+      this.startPosition = this.currentTime;
+    }
+  }
+
+  // 8. SONG END HANDLER
+  handleSongEnded() {
+    this.currentTime = this.duration;
+    this.pause();
+    this.updateProgressUI();
+    console.log(`[Phase 2 Prep] Track finished (${this.formatTime(this.duration)})`);
   }
 
   updateProgressUI() {
-    const percent = (this.currentTime / this.duration) * 100;
+    const percent = Math.max(0, Math.min(100, (this.currentTime / this.duration) * 100));
     if (this.progressFill) this.progressFill.style.width = `${percent}%`;
     if (this.progressThumb) this.progressThumb.style.left = `${percent}%`;
     if (this.timeDisplayElement) {
@@ -150,12 +230,13 @@ class RoadwaysMusicPlayer {
   }
 
   formatTime(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
+    const totalSecs = Math.max(0, Math.floor(seconds));
+    const mins = Math.floor(totalSecs / 60);
+    const secs = Math.floor(totalSecs % 60);
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   }
 
-  // 6. DRAGGABLE SEEK BAR LOGIC (Pointer Events: Mouse, Trackpad, Touch)
+  // 9. DRAGGABLE SEEK BAR LOGIC (Pointer Events: Mouse, Trackpad, Touch)
   setupEventListeners() {
     if (this.playBtn) {
       this.playBtn.addEventListener('click', () => this.togglePlay());

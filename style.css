@@ -80,6 +80,43 @@ main {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
+/* Subtle Bus SVG Idle Motion & Exhaust Micro-Animation */
+@keyframes busIdle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes exhaustPuffAnim {
+  0% {
+    r: 0.8px;
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  25% {
+    opacity: 0.6;
+  }
+  80% {
+    r: 3px;
+    opacity: 0;
+    transform: translate(-5px, -2px);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.bus-idle-anim {
+  animation: busIdle 2.5s ease-in-out infinite;
+}
+
+.exhaust-puff {
+  animation: exhaustPuffAnim 2.5s ease-out infinite;
+}
+
 /* Floating Bottom Player Pill Container - Fixed & Independent of Logo Position */
 .fixed-player-wrapper {
   position: fixed;
