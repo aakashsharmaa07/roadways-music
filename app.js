@@ -11,6 +11,9 @@ class RoadwaysMusicPlayer {
     this.ytPlayer = null;
     this.tickerInterval = null;
     this.hasResolvedInitialTrack = false;
+    this.metadataRetryTimer = null;
+    this.metadataRafId = null;
+    this.metadataResolutionToken = 0;
     
     // Supabase Realtime Presence State
     this.supabaseClient = null;
@@ -309,46 +312,76 @@ class RoadwaysMusicPlayer {
     this.updateProgressUI();
   }
 
-  syncTrackMetadata() {
-    if (!this.ytPlayer || typeof this.ytPlayer.getVideoData !== 'function') return;
-    
-    const videoData = this.ytPlayer.getVideoData();
+  clearMetadataRetries() {
+    if (this.metadataRetryTimer) {
+      clearTimeout(this.metadataRetryTimer);
+      this.metadataRetryTimer = null;
+    }
+    if (this.metadataRafId) {
+      cancelAnimationFrame(this.metadataRafId);
+      this.metadataRafId = null;
+    }
+  }
+
+  syncTrackMetadata(retryCount = 0) {
+    this.clearMetadataRetries();
+
+    const token = ++this.metadataResolutionToken;
+    const videoData = (this.ytPlayer && typeof this.ytPlayer.getVideoData === 'function') ? this.ytPlayer.getVideoData() : null;
     const videoId = videoData ? (videoData.video_id || '') : '';
     
-    if (!videoId) {
-      if (!this.hasResolvedInitialTrack) {
-        if (this.songTitleElement) this.songTitleElement.textContent = "Loading…";
-        if (this.artistNameElement) this.artistNameElement.textContent = "Connecting to Roadways Music";
+    if (videoId) {
+      this.hasResolvedInitialTrack = true;
+      const rawTitle = videoData.title || '';
+      const author = videoData.author || '';
+      
+      console.log(`[Roadways] Active Video ID: ${videoId} | Title: "${rawTitle}" (Resolved on attempt ${retryCount})`);
+
+      let cleanTitle = rawTitle
+        .replace(/\(Official Video\)/gi, '')
+        .replace(/\[Official Video\]/gi, '')
+        .replace(/\(Official Audio\)/gi, '')
+        .replace(/\[Official Audio\]/gi, '')
+        .replace(/\(Full Song\)/gi, '')
+        .replace(/\[4K\]/gi, '')
+        .replace(/\(HD\)/gi, '')
+        .trim();
+
+      if (!cleanTitle && typeof PLAYLIST !== 'undefined' && PLAYLIST[this.currentIndex]) {
+        cleanTitle = PLAYLIST[this.currentIndex].title;
+      }
+
+      if (this.songTitleElement) this.songTitleElement.textContent = cleanTitle || "Roadways 90s Hit";
+      if (this.artistNameElement) this.artistNameElement.textContent = author || "Bollywood Classic";
+      
+      if (this.albumArtElement && videoId) {
+        this.albumArtElement.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
       }
       return;
     }
 
-    this.hasResolvedInitialTrack = true;
-
-    const rawTitle = videoData.title || '';
-    const author = videoData.author || '';
-    
-    console.log(`[Roadways] Active Video ID: ${videoId} | Title: "${rawTitle}"`);
-
-    let cleanTitle = rawTitle
-      .replace(/\(Official Video\)/gi, '')
-      .replace(/\[Official Video\]/gi, '')
-      .replace(/\(Official Audio\)/gi, '')
-      .replace(/\[Official Audio\]/gi, '')
-      .replace(/\(Full Song\)/gi, '')
-      .replace(/\[4K\]/gi, '')
-      .replace(/\(HD\)/gi, '')
-      .trim();
-
-    if (!cleanTitle && typeof PLAYLIST !== 'undefined' && PLAYLIST[this.currentIndex]) {
-      cleanTitle = PLAYLIST[this.currentIndex].title;
+    if (!this.hasResolvedInitialTrack) {
+      if (this.songTitleElement) this.songTitleElement.textContent = "Loading…";
+      if (this.artistNameElement) this.artistNameElement.textContent = "Connecting to Roadways Music";
     }
 
-    if (this.songTitleElement) this.songTitleElement.textContent = cleanTitle || "Roadways 90s Hit";
-    if (this.artistNameElement) this.artistNameElement.textContent = author || "Bollywood Classic";
-    
-    if (this.albumArtElement && videoId) {
-      this.albumArtElement.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+    // Attempt 0 -> Schedule immediate requestAnimationFrame check (Attempt 1)
+    if (retryCount === 0) {
+      this.metadataRafId = requestAnimationFrame(() => {
+        if (this.metadataResolutionToken === token) {
+          this.syncTrackMetadata(1);
+        }
+      });
+      return;
+    }
+
+    // Fallback timer polling (Attempts 1 to 15 at 50ms)
+    if (retryCount < 15) {
+      this.metadataRetryTimer = setTimeout(() => {
+        if (this.metadataResolutionToken === token) {
+          this.syncTrackMetadata(retryCount + 1);
+        }
+      }, 50);
     }
   }
 
