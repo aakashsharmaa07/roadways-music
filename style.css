@@ -12,82 +12,103 @@
   padding: 0;
 }
 
-html, body {
+html {
+  height: 100%;
+  height: 100dvh;
+  width: 100vw;
+  overflow: hidden;
+  background: #000;
+}
+
+body {
   height: 100%;
   height: 100dvh;
   width: 100vw;
   overflow: hidden;
   font-family: var(--font-inter);
-  background-color: #1a0a0a;
+  background: transparent !important; /* Transparent body so fixed background image is 100% visible */
   color: #ffffff;
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
 
-/* Fullscreen Bus Background Illustration Layer - Bright & Visible */
-.hero-bg {
+/* Fullscreen Bus Background Illustration Layer - Direct image at z-index 0 */
+.hero-bg-img {
   position: fixed;
-  inset: 0;
-  z-index: -10;
-  background-image: url('assets/bus_background.jpg');
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100dvh;
+  object-fit: cover;
+  object-position: center center;
+  z-index: 0;
+  pointer-events: none;
+  display: block;
 }
 
-/* Subtle gradient readability overlay - retains rich original bus colors */
-.hero-overlay {
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.02) 50%, rgba(0, 0, 0, 0.4) 100%);
+/* Main UI Stacking Context - Elevated above background */
+main {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  min-height: 100dvh;
 }
 
 /* Roadways Music Logo Container - Large & Prominent */
 .roadways-logo-container {
-  margin-top: 14vh;
+  margin-top: 13vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 0 1.5rem;
 }
 
-/* Transparent PNG Logo - Crisp White, Large Scale matching saloon.wtf title */
+/* Transparent PNG Logo (Fontt.png) - 15-25% Larger Rendered Size */
 .roadways-logo-img {
   height: auto;
-  width: 72vw;
-  max-width: 680px;
-  filter: drop-shadow(0 4px 24px rgba(0, 0, 0, 0.5));
+  width: 82vw;
+  max-width: 780px;
+  filter: drop-shadow(0 4px 24px rgba(0, 0, 0, 0.6));
 }
 
 /* Top Navigation Glass Pills */
 .glass-pill {
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.30);
   backdrop-filter: blur(16px) saturate(150%);
   -webkit-backdrop-filter: blur(16px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
 /* Player Pill Specific Glassmorphism - Floating Compact Music Control */
 .glass-player {
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(20, 10, 10, 0.45);
   backdrop-filter: blur(28px) saturate(150%);
   -webkit-backdrop-filter: blur(28px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.20);
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
-/* Square Song/Movie Artwork - No CD/Vinyl Spin */
+/* Circular Song Artwork - Pure Circle (76px x 76px) */
 .player-artwork-box {
   position: relative;
-  width: 4.75rem; /* 76px */
-  height: 4.75rem;
+  width: 76px;
+  height: 76px;
   flex-shrink: 0;
-  border-radius: 0.85rem;
+  border-radius: 50%;
   overflow: hidden;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+}
+
+/* Continuous 360 Degree Rotation Animation - Controlled by Play/Pause state */
+@keyframes spinArtwork {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .player-artwork-img {
@@ -95,6 +116,13 @@ html, body {
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: 50%;
+  animation: spinArtwork 10s linear infinite;
+  animation-play-state: paused; /* Default paused until user clicks Play */
+}
+
+.player-artwork-img.is-playing {
+  animation-play-state: running; /* Resumes spinning from exact current angle */
 }
 
 /* Custom Seek Slider */
@@ -145,13 +173,13 @@ html, body {
 /* Responsive adjustments */
 @media (max-width: 640px) {
   .roadways-logo-container {
-    margin-top: 16vh;
+    margin-top: 15vh;
   }
   .roadways-logo-img {
-    width: 88vw;
+    width: 92vw;
   }
   .player-artwork-box {
-    width: 4rem;
-    height: 4rem;
+    width: 64px;
+    height: 64px;
   }
 }

@@ -1,4 +1,4 @@
-// Roadways Music Application - Core Logic Architecture (Phase 1.1 Visual Correction)
+// Roadways Music Application - Core Logic Architecture (Phase 1.3 Polish)
 
 class RoadwaysMusicPlayer {
   constructor() {
@@ -62,7 +62,7 @@ class RoadwaysMusicPlayer {
     setInterval(updateCount, 12000);
   }
 
-  // 3. STUBBED AUDIO LOGIC ARCHITECTURE
+  // 3. SONG METADATA LOADING ARCHITECTURE
   loadSong(index) {
     if (index < 0) index = PLAYLIST.length - 1;
     if (index >= PLAYLIST.length) index = 0;
@@ -71,15 +71,21 @@ class RoadwaysMusicPlayer {
     const track = PLAYLIST[this.currentIndex];
     if (this.songTitleElement) this.songTitleElement.textContent = track.title;
     if (this.artistNameElement) this.artistNameElement.textContent = track.artist;
-    if (this.albumArtElement && track.cover) this.albumArtElement.src = track.cover;
+    if (this.albumArtElement && track.artwork) {
+      this.albumArtElement.src = track.artwork;
+    }
     
     this.duration = track.durationSeconds || 296;
     this.currentTime = Math.floor(this.duration * 0.665); // ~3:17
     this.updateProgressUI();
   }
 
+  // 4. PLAY / PAUSE CONTROLS ROTATION (Preserves exact rotation angle when paused)
   play() {
     this.isPlaying = true;
+    if (this.albumArtElement) {
+      this.albumArtElement.classList.add('is-playing');
+    }
     if (this.playBtn) {
       this.playBtn.setAttribute('aria-label', 'Pause');
       this.playBtn.setAttribute('aria-pressed', 'true');
@@ -89,11 +95,13 @@ class RoadwaysMusicPlayer {
         </svg>
       `;
     }
-    console.log(`[Phase 1 Stub] Selected track ${this.currentIndex + 1}: ${PLAYLIST[this.currentIndex].title}`);
   }
 
   pause() {
     this.isPlaying = false;
+    if (this.albumArtElement) {
+      this.albumArtElement.classList.remove('is-playing');
+    }
     if (this.playBtn) {
       this.playBtn.setAttribute('aria-label', 'Play');
       this.playBtn.setAttribute('aria-pressed', 'false');

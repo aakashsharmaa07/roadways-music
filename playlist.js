@@ -1,13 +1,13 @@
-// BUS WALE KI PLAYLIST (90s Hits) Data Architecture for Phase 2 Integration
+// BUS WALE KI PLAYLIST (90s Hits) Data Architecture
 const PLAYLIST = [
   {
     id: 1,
     title: "Woh Meri Neend Mera Chain",
-    artist: "Sadhana Sargam, Sanjeevani",
+    artist: "Sadhana Sargam",
     movie: "Hum Hain Rahi Pyar Ke",
     duration: "4:56",
     durationSeconds: 296,
-    cover: "assets/cover.jpg",
+    artwork: "assets/song_artwork.jpg",
     spotifyUrl: "https://open.spotify.com/playlist/68SlxR9n2Ij1fTcNoQqF3f"
   },
   {
@@ -17,7 +17,7 @@ const PLAYLIST = [
     movie: "Dil Se..",
     duration: "6:54",
     durationSeconds: 414,
-    cover: "assets/cover.jpg",
+    artwork: "assets/song_artwork.jpg",
     spotifyUrl: "https://open.spotify.com/playlist/68SlxR9n2Ij1fTcNoQqF3f"
   },
   {
@@ -27,7 +27,7 @@ const PLAYLIST = [
     movie: "Raja Hindustani",
     duration: "7:31",
     durationSeconds: 451,
-    cover: "assets/cover.jpg",
+    artwork: "assets/song_artwork.jpg",
     spotifyUrl: "https://open.spotify.com/playlist/68SlxR9n2Ij1fTcNoQqF3f"
   },
   {
@@ -37,7 +37,7 @@ const PLAYLIST = [
     movie: "Papa Kehte Hain",
     duration: "7:12",
     durationSeconds: 432,
-    cover: "assets/cover.jpg",
+    artwork: "assets/song_artwork.jpg",
     spotifyUrl: "https://open.spotify.com/playlist/68SlxR9n2Ij1fTcNoQqF3f"
   },
   {
@@ -47,7 +47,7 @@ const PLAYLIST = [
     movie: "Aashiqui",
     duration: "6:12",
     durationSeconds: 372,
-    cover: "assets/cover.jpg",
+    artwork: "assets/song_artwork.jpg",
     spotifyUrl: "https://open.spotify.com/playlist/68SlxR9n2Ij1fTcNoQqF3f"
   },
   {
@@ -57,7 +57,7 @@ const PLAYLIST = [
     movie: "Aashiqui",
     duration: "5:29",
     durationSeconds: 329,
-    cover: "assets/cover.jpg",
+    artwork: "assets/song_artwork.jpg",
     spotifyUrl: "https://open.spotify.com/playlist/68SlxR9n2Ij1fTcNoQqF3f"
   },
   {
@@ -67,7 +67,7 @@ const PLAYLIST = [
     movie: "Mohra",
     duration: "6:05",
     durationSeconds: 365,
-    cover: "assets/cover.jpg",
+    artwork: "assets/song_artwork.jpg",
     spotifyUrl: "https://open.spotify.com/playlist/68SlxR9n2Ij1fTcNoQqF3f"
   },
   {
@@ -77,7 +77,7 @@ const PLAYLIST = [
     movie: "Dilwale Dulhania Le Jayenge",
     duration: "6:41",
     durationSeconds: 401,
-    cover: "assets/cover.jpg",
+    artwork: "assets/song_artwork.jpg",
     spotifyUrl: "https://open.spotify.com/playlist/68SlxR9n2Ij1fTcNoQqF3f"
   }
 ];
