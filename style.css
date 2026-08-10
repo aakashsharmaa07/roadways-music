@@ -1,0 +1,157 @@
+/* Roadways Music — Custom CSS Design System (Exact saloon.wtf Architecture) */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-inter: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  height: 100dvh;
+  width: 100vw;
+  overflow: hidden;
+  font-family: var(--font-inter);
+  background-color: #1a0a0a;
+  color: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Fullscreen Bus Background Illustration Layer - Bright & Visible */
+.hero-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  background-image: url('assets/bus_background.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+}
+
+/* Subtle gradient readability overlay - retains rich original bus colors */
+.hero-overlay {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.02) 50%, rgba(0, 0, 0, 0.4) 100%);
+}
+
+/* Roadways Music Logo Container - Large & Prominent */
+.roadways-logo-container {
+  margin-top: 14vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 1.5rem;
+}
+
+/* Transparent PNG Logo - Crisp White, Large Scale matching saloon.wtf title */
+.roadways-logo-img {
+  height: auto;
+  width: 72vw;
+  max-width: 680px;
+  filter: drop-shadow(0 4px 24px rgba(0, 0, 0, 0.5));
+}
+
+/* Top Navigation Glass Pills */
+.glass-pill {
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* Player Pill Specific Glassmorphism - Floating Compact Music Control */
+.glass-player {
+  background: rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* Square Song/Movie Artwork - No CD/Vinyl Spin */
+.player-artwork-box {
+  position: relative;
+  width: 4.75rem; /* 76px */
+  height: 4.75rem;
+  flex-shrink: 0;
+  border-radius: 0.85rem;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.player-artwork-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Custom Seek Slider */
+.slider-container {
+  position: relative;
+  height: 8px;
+  width: 100%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.slider-track {
+  position: absolute;
+  inset: 0;
+  height: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+.slider-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.9);
+  transition: width 0.1s linear;
+}
+
+.slider-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  opacity: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: opacity 0.15s ease;
+}
+
+.slider-container:hover .slider-thumb {
+  opacity: 1;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .roadways-logo-container {
+    margin-top: 16vh;
+  }
+  .roadways-logo-img {
+    width: 88vw;
+  }
+  .player-artwork-box {
+    width: 4rem;
+    height: 4rem;
+  }
+}
