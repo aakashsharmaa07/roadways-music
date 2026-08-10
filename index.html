@@ -12,11 +12,23 @@
   
   <!-- Custom Design System & Visual Styles -->
   <link rel="stylesheet" href="style.css" />
+
+  <!-- YouTube IFrame Player API -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+
+  <!-- Supabase JS Client for Realtime Presence -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
 </head>
 <body class="min-h-full flex flex-col overflow-hidden select-none bg-transparent">
 
   <!-- Fullscreen Bus Background Illustration Layer (Z-Index 0, Raw & Fully Visible) -->
   <img src="assets/bus_background.jpg" alt="Indian Bus Background" class="hero-bg-img" />
+
+  <!-- YouTube IFrame Engine Container (Valid 200px x 200px viewport placed offscreen) -->
+  <div class="pointer-events-none fixed -top-[9999px] -left-[9999px] h-[200px] w-[200px] opacity-0 z-0" aria-hidden="true">
+    <div id="yt-player"></div>
+  </div>
 
   <!-- UI Layer (Z-Index 10 above Background) -->
   <main class="relative z-10 flex min-h-dvh flex-1 flex-col items-center justify-between overflow-hidden">
@@ -43,14 +55,14 @@
           <circle class="exhaust-puff" cx="0" cy="14" r="1" fill="currentColor" opacity="0"></circle>
         </svg>
       </div>
-      <span id="online-count" class="tabular-nums">26</span>
+      <span id="online-count" class="tabular-nums">1</span>
       <span class="text-white/70">passengers onboard</span>
     </div>
 
     <!-- TOP RIGHT: External Music Links (Spotify & YT Music) -->
     <div class="fixed right-5 top-5 z-20 flex items-center gap-2">
       <!-- Spotify Link -->
-      <a href="https://open.spotify.com" target="_blank" rel="noopener noreferrer" class="group/pill flex items-center gap-2 rounded-full text-sm font-medium text-white p-2.5 sm:py-2 sm:pl-3 sm:pr-3.5 glass-pill transition hover:opacity-80 active:scale-95" aria-label="Open BUS WALE KI PLAYLIST on Spotify">
+      <a href="https://open.spotify.com/playlist/68SlxR9n2Ij1fTcNoQqF3f?si=d0531394b74541d7" target="_blank" rel="noopener noreferrer" class="group/pill flex items-center gap-2 rounded-full text-sm font-medium text-white p-2.5 sm:py-2 sm:pl-3 sm:pr-3.5 glass-pill transition hover:opacity-80 active:scale-95" aria-label="Open BUS WALE KI PLAYLIST on Spotify">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="white" aria-hidden="true">
           <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.42 1.56-.299.421-1.02.599-1.559.3z"></path>
         </svg>
@@ -61,7 +73,7 @@
       </a>
 
       <!-- YT Music Link -->
-      <a href="https://music.youtube.com" target="_blank" rel="noopener noreferrer" class="group/pill flex items-center gap-2 rounded-full text-sm font-medium text-white p-2.5 sm:py-2 sm:pl-3 sm:pr-3.5 glass-pill transition hover:opacity-80 active:scale-95" aria-label="Open YT Music">
+      <a href="https://music.youtube.com/playlist?list=PLG_xwT8XI-6E" target="_blank" rel="noopener noreferrer" class="group/pill flex items-center gap-2 rounded-full text-sm font-medium text-white p-2.5 sm:py-2 sm:pl-3 sm:pr-3.5 glass-pill transition hover:opacity-80 active:scale-95" aria-label="Open Playlist on YouTube Music">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="white" aria-hidden="true">
           <path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm0 19.104c-3.924 0-7.104-3.18-7.104-7.104S8.076 4.896 12 4.896s7.104 3.18 7.104 7.104-3.18 7.104-7.104 7.104zm0-13.332c-3.432 0-6.228 2.796-6.228 6.228S8.568 18.228 12 18.228s6.228-2.796 6.228-6.228S15.432 5.772 12 5.772zM9.684 15.54V8.46L15.816 12l-6.132 3.54z"></path>
         </svg>
@@ -84,11 +96,14 @@
       <div class="w-full max-w-xl">
         <div class="group relative flex items-center gap-4 rounded-full p-3 pr-5 glass-player">
           
-          <!-- Circular Song Artwork with Subtle Center Pin -->
+          <!-- Circular Song Artwork Box (76px x 76px Viewport) -->
           <div class="player-artwork-box">
-            <img id="album-art" src="assets/song_artwork.jpg" alt="Song Artwork" class="player-artwork-img" />
-            <!-- Subtle Premium CD Center Pin (7px diameter) -->
-            <div class="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/80 ring-1 ring-white/60 shadow-sm z-10"></div>
+            <!-- Rotating CD Disc Assembly (Artwork Image + Center CD Hub Pin rotate together) -->
+            <div id="album-art-disc" class="player-artwork-disc">
+              <img id="album-art" src="assets/song_artwork.jpg" alt="Song Artwork" class="player-artwork-img" />
+              <!-- Subtle Premium CD Center Pin (7px diameter, centered at 50%/50%) -->
+              <div class="pointer-events-none absolute left-1/2 top-1/2 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/90 ring-1 ring-white/70 shadow-sm z-10"></div>
+            </div>
           </div>
 
           <!-- Song Metadata & Draggable Progress Timeline -->
@@ -103,7 +118,7 @@
                 </div>
                 <div id="progress-thumb" class="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 shadow transition-opacity group-hover/bar:opacity-100" style="left: 0%;"></div>
               </div>
-              <div id="time-display" class="mt-1.5 text-left text-[11px] tabular-nums text-white/60">0:00 / 4:56</div>
+              <div id="time-display" class="mt-1.5 text-left text-[11px] tabular-nums text-white/60">0:00 / 0:00</div>
             </div>
           </div>
 

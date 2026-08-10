@@ -139,7 +139,7 @@ main {
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
-/* Circular Song Artwork - Pure Circle (76px x 76px) */
+/* Circular Song Artwork Outer Viewport - 76px x 76px Perfect Circle */
 .player-artwork-box {
   position: relative;
   width: 76px;
@@ -149,9 +149,25 @@ main {
   overflow: hidden;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   border: 1.5px solid rgba(255, 255, 255, 0.25);
+  background: #000;
 }
 
-/* Continuous 360 Degree Rotation Animation - Controlled by Play/Pause state */
+/* Rotating CD Disc Assembly Container - Holds both artwork & center CD pin together */
+.player-artwork-disc {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  animation: spinArtwork 10s linear infinite;
+  animation-play-state: paused; /* Default paused until user clicks Play */
+}
+
+.player-artwork-disc.is-playing {
+  animation-play-state: running; /* Resumes spinning from exact current angle */
+}
+
+/* Continuous 360 Degree Rotation Animation */
 @keyframes spinArtwork {
   0% {
     transform: rotate(0deg);
@@ -161,18 +177,16 @@ main {
   }
 }
 
+/* YouTube Thumbnail Artwork - Zoomed & Cropped to eliminate 16:9 letterbox/pillarbox borders */
 .player-artwork-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center center;
   display: block;
   border-radius: 50%;
-  animation: spinArtwork 10s linear infinite;
-  animation-play-state: paused; /* Default paused until user clicks Play */
-}
-
-.player-artwork-img.is-playing {
-  animation-play-state: running; /* Resumes spinning from exact current angle */
+  transform: scale(1.35); /* Zooms past 16:9 YouTube thumbnail white/black side borders */
+  transform-origin: center center;
 }
 
 /* Draggable Seek Slider - Phase 1.7 Pointer Interaction */
