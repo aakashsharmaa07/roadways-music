@@ -10,6 +10,7 @@ class RoadwaysMusicPlayer {
     this.isDragging = false;
     this.ytPlayer = null;
     this.tickerInterval = null;
+    this.hasResolvedInitialTrack = false;
     
     // Supabase Realtime Presence State
     this.supabaseClient = null;
@@ -312,15 +313,22 @@ class RoadwaysMusicPlayer {
     if (!this.ytPlayer || typeof this.ytPlayer.getVideoData !== 'function') return;
     
     const videoData = this.ytPlayer.getVideoData();
-    if (!videoData) return;
+    const videoId = videoData ? (videoData.video_id || '') : '';
     
+    if (!videoId) {
+      if (!this.hasResolvedInitialTrack) {
+        if (this.songTitleElement) this.songTitleElement.textContent = "Loading…";
+        if (this.artistNameElement) this.artistNameElement.textContent = "Connecting to Roadways Music";
+      }
+      return;
+    }
+
+    this.hasResolvedInitialTrack = true;
+
     const rawTitle = videoData.title || '';
     const author = videoData.author || '';
-    const videoId = videoData.video_id || '';
     
-    if (videoId) {
-      console.log(`[Roadways] Active Video ID: ${videoId} | Title: "${rawTitle}"`);
-    }
+    console.log(`[Roadways] Active Video ID: ${videoId} | Title: "${rawTitle}"`);
 
     let cleanTitle = rawTitle
       .replace(/\(Official Video\)/gi, '')
