@@ -49,6 +49,12 @@ class RoadwaysMusicPlayer {
     this.progressThumb = document.getElementById('progress-thumb');
     this.metadataContainer = document.getElementById('metadata-container');
 
+    // Perfect Seek Dragging State
+    this.isSeeking = false;
+    this.dragTrackRect = null;
+    this.dragRafId = null;
+    this.pendingClientX = 0;
+
     this.init();
   }
 
@@ -688,15 +694,49 @@ class RoadwaysMusicPlayer {
     this.pollForYouTubeVideoChange(previousVideoId, 0);
   }
 
+  seekToSeconds(seconds) {
+    if (this.duration <= 0) return;
+    const targetSeconds = Math.max(0, Math.min(this.duration, seconds));
+    this.currentTime = targetSeconds;
+    this.updateProgressUI();
+
+    if (this.ytPlayer && typeof this.ytPlayer.seekTo === 'function') {
+      try {
+        this.ytPlayer.seekTo(targetSeconds, true);
+      } catch (err) {
+        console.warn('[Roadways] seekTo error:', err);
+      }
+    }
+  }
+
   seekToPercent(percentage) {
     const clampedPercent = Math.max(0, Math.min(100, percentage));
-    if (this.ytPlayer && typeof this.ytPlayer.getDuration === 'function' && typeof this.ytPlayer.seekTo === 'function') {
-      const dur = this.ytPlayer.getDuration() || this.duration;
+    const dur = (this.ytPlayer && typeof this.ytPlayer.getDuration === 'function') ? (this.ytPlayer.getDuration() || this.duration) : this.duration;
+    if (dur > 0) {
       const targetSeconds = (clampedPercent / 100) * dur;
-      console.log(`[Roadways] Seeking to ${clampedPercent.toFixed(1)}% (${targetSeconds.toFixed(1)}s)...`);
-      this.ytPlayer.seekTo(targetSeconds, true);
-      this.currentTime = targetSeconds;
-      this.updateProgressUI();
+      this.seekToSeconds(targetSeconds);
+    }
+  }
+
+  // Compositor-Synchronized Drag Frame Renderer (Zero Micro-Jitter)
+  renderDragFrame() {
+    this.dragRafId = null;
+    if (!this.isSeeking || !this.dragTrackRect) return;
+
+    const width = this.dragTrackRect.width || 1;
+    const ratio = Math.max(0, Math.min(1, (this.pendingClientX - this.dragTrackRect.left) / width));
+    const dur = (this.ytPlayer && typeof this.ytPlayer.getDuration === 'function') ? (this.ytPlayer.getDuration() || this.duration) : this.duration;
+    const previewSec = ratio * (dur || 100);
+
+    if (this.progressFill) {
+      this.progressFill.style.transform = `scaleX(${ratio})`;
+    }
+    if (this.progressThumb) {
+      const offsetPx = ratio * width;
+      this.progressThumb.style.transform = `translate(${offsetPx}px, -50%) translate(-50%, 0)`;
+    }
+    if (this.timeDisplayElement) {
+      this.timeDisplayElement.textContent = `${this.formatTime(previewSec)} / ${this.formatTime(dur)}`;
     }
   }
 
@@ -721,7 +761,13 @@ class RoadwaysMusicPlayer {
     }
   }
 
-  updateProgressUI() {
+  updateProgressUI(overrideSeconds = null) {
+    // CRITICAL: While active dragging, pointer position is 100% authoritative!
+    if (this.isSeeking && overrideSeconds === null) {
+      return;
+    }
+
+    const current = (overrideSeconds !== null) ? overrideSeconds : this.currentTime;
     if (this.duration <= 0) {
       if (this.progressFill) this.progressFill.style.transform = 'scaleX(0)';
       if (this.progressThumb) this.progressThumb.style.transform = 'translate(-50%, -50%) translateX(0px)';
@@ -729,7 +775,7 @@ class RoadwaysMusicPlayer {
       return;
     }
 
-    const scaleFactor = Math.max(0, Math.min(1, this.currentTime / this.duration));
+    const scaleFactor = Math.max(0, Math.min(1, current / this.duration));
     if (this.progressFill) {
       this.progressFill.style.transform = `scaleX(${scaleFactor})`;
     }
@@ -739,7 +785,7 @@ class RoadwaysMusicPlayer {
       this.progressThumb.style.transform = `translate(${offsetPx}px, -50%) translate(-50%, 0)`;
     }
     if (this.timeDisplayElement) {
-      this.timeDisplayElement.textContent = `${this.formatTime(this.currentTime)} / ${this.formatTime(this.duration)}`;
+      this.timeDisplayElement.textContent = `${this.formatTime(current)} / ${this.formatTime(this.duration)}`;
     }
   }
 
@@ -780,51 +826,88 @@ class RoadwaysMusicPlayer {
       this.nextBtn.addEventListener('click', () => this.next());
     }
 
+    // Progress Bar Listeners — PERFECT FLUID DRAG SEEK (Zero Jitter, Composite RAF)
     if (this.progressBar) {
-      const updateDragPosition = (e) => {
-        const rect = this.progressBar.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const percentage = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
-        this.seekToPercent(percentage);
-        return percentage;
-      };
-
       this.progressBar.addEventListener('pointerdown', (e) => {
-        this.isDragging = true;
-        try {
-          this.progressBar.setPointerCapture(e.pointerId);
-        } catch(err) {}
-        updateDragPosition(e);
+        this.isSeeking = true;
+        this.progressBar.classList.add('is-seeking');
+        try { this.progressBar.setPointerCapture(e.pointerId); } catch(err) {}
+        
+        // Cache geometry ONCE on pointerdown
+        this.dragTrackRect = this.progressBar.getBoundingClientRect();
+        this.pendingClientX = e.clientX;
+        this.renderDragFrame();
       });
 
       this.progressBar.addEventListener('pointermove', (e) => {
-        if (this.isDragging) {
-          updateDragPosition(e);
+        if (!this.isSeeking) return;
+        this.pendingClientX = e.clientX;
+        if (!this.dragRafId) {
+          this.dragRafId = requestAnimationFrame(() => this.renderDragFrame());
         }
       });
 
-      const handlePointerRelease = (e) => {
-        if (this.isDragging) {
-          const finalPercent = updateDragPosition(e);
-          this.seekToPercent(finalPercent);
-          this.isDragging = false;
-          try {
-            this.progressBar.releasePointerCapture(e.pointerId);
-          } catch(err) {}
+      const handleProgressPointerRelease = (e) => {
+        if (!this.isSeeking) return;
+        
+        if (this.dragRafId) {
+          cancelAnimationFrame(this.dragRafId);
+          this.dragRafId = null;
         }
+
+        const width = this.dragTrackRect ? (this.dragTrackRect.width || 1) : (this.progressBar.clientWidth || 1);
+        const left = this.dragTrackRect ? this.dragTrackRect.left : 0;
+        const ratio = Math.max(0, Math.min(1, (e.clientX - left) / width));
+        const dur = (this.ytPlayer && typeof this.ytPlayer.getDuration === 'function') ? (this.ytPlayer.getDuration() || this.duration) : this.duration;
+        const finalSeconds = ratio * (dur || 100);
+
+        this.isSeeking = false;
+        this.dragTrackRect = null;
+        this.progressBar.classList.remove('is-seeking');
+        try { this.progressBar.releasePointerCapture(e.pointerId); } catch(err) {}
+
+        // Single seekTo call on release!
+        this.seekToSeconds(finalSeconds);
       };
 
-      this.progressBar.addEventListener('pointerup', handlePointerRelease);
-      this.progressBar.addEventListener('pointercancel', handlePointerRelease);
+      this.progressBar.addEventListener('pointerup', handleProgressPointerRelease);
+      this.progressBar.addEventListener('pointercancel', handleProgressPointerRelease);
+      this.progressBar.addEventListener('lostpointercapture', handleProgressPointerRelease);
     }
 
+    // Keyboard Shortcuts (Space, ←, →, N, P)
     document.addEventListener('keydown', (e) => {
-      if (e.code === 'Space') {
+      const activeEl = document.activeElement;
+      const tagName = activeEl ? activeEl.tagName : '';
+      if (
+        tagName === 'INPUT' || 
+        tagName === 'TEXTAREA' || 
+        tagName === 'SELECT' || 
+        (activeEl && activeEl.isContentEditable)
+      ) {
+        return;
+      }
+
+      const code = e.code;
+      const key = e.key ? e.key.toLowerCase() : '';
+
+      if (code === 'Space') {
         e.preventDefault();
         this.togglePlay();
-      } else if (e.code === 'ArrowRight') {
+      } else if (code === 'ArrowLeft') {
+        e.preventDefault();
+        const newSec = Math.max(0, this.currentTime - 5);
+        this.seekToSeconds(newSec);
+      } else if (code === 'ArrowRight') {
+        e.preventDefault();
+        const dur = (this.duration > 0) ? this.duration : 100;
+        const newSec = Math.min(dur, this.currentTime + 5);
+        this.seekToSeconds(newSec);
+      } else if (code === 'KeyN' || key === 'n') {
+        e.preventDefault();
         this.next();
-      } else if (e.code === 'ArrowLeft') {
+      } else if (code === 'KeyP' || key === 'p') {
+        e.preventDefault();
         this.previous();
       }
     });

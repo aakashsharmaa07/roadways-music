@@ -249,8 +249,14 @@ main {
 }
 
 .slider-container:hover .slider-thumb,
-.slider-container:active .slider-thumb {
+.slider-container:active .slider-thumb,
+.slider-container.is-seeking .slider-thumb {
   opacity: 1;
+}
+
+.slider-container.is-seeking .slider-fill,
+.slider-container.is-seeking .slider-thumb {
+  transition: none !important;
 }
 
 /* Coordinated Track Metadata Group Animation (50ms Exit / 90ms Enter = 140ms Total) */
