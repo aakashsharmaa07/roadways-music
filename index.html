@@ -101,7 +101,7 @@
           <div class="player-artwork-box">
             <!-- Rotating CD Disc Assembly (Artwork Image + Center CD Hub Pin rotate together) -->
             <div id="album-art-disc" class="player-artwork-disc">
-              <img id="album-art" src="assets/song_artwork.jpg" alt="Song Artwork" class="player-artwork-img" />
+              <img id="album-art" src="" decoding="async" alt="Song Artwork" class="player-artwork-img" />
               <!-- Subtle Premium CD Center Pin (7px diameter, centered at 50%/50%) -->
               <div class="pointer-events-none absolute left-1/2 top-1/2 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/90 ring-1 ring-white/70 shadow-sm z-10"></div>
             </div>
@@ -109,15 +109,17 @@
 
           <!-- Song Metadata & Draggable Progress Timeline -->
           <div class="min-w-0 flex-1">
-            <p id="song-title" class="truncate text-[15px] font-semibold text-white drop-shadow-sm">Loading…</p>
-            <p id="artist-name" class="truncate text-[13px] text-white/70">Connecting to Roadways Music</p>
+            <div id="metadata-container" class="metadata-wrapper">
+              <p id="song-title" class="truncate text-[15px] font-semibold text-white drop-shadow-sm"></p>
+              <p id="artist-name" class="truncate text-[13px] text-white/70"></p>
+            </div>
             
             <div class="mt-2">
               <div id="progress-bar" class="slider-container group/bar relative h-3 w-full cursor-pointer" role="slider" aria-label="Seek timeline" aria-valuemin="0" aria-valuemax="100">
                 <div class="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/20">
-                  <div id="progress-fill" class="h-full rounded-full bg-white/90" style="width: 0%;"></div>
+                  <div id="progress-fill" class="slider-fill"></div>
                 </div>
-                <div id="progress-thumb" class="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 shadow transition-opacity group-hover/bar:opacity-100" style="left: 0%;"></div>
+                <div id="progress-thumb" class="slider-thumb group-hover/bar:opacity-100"></div>
               </div>
               <div id="time-display" class="mt-1.5 text-left text-[11px] tabular-nums text-white/60">0:00 / 0:00</div>
             </div>
@@ -151,7 +153,6 @@
   </main>
 
   <!-- Application Scripts -->
-  <script src="playlist.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

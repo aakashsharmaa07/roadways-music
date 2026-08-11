@@ -159,6 +159,8 @@ main {
   height: 100%;
   border-radius: 50%;
   overflow: hidden;
+  will-change: transform;
+  transform: translateZ(0);
   animation: spinArtwork 10s linear infinite;
   animation-play-state: paused; /* Default paused until user clicks Play */
 }
@@ -177,7 +179,7 @@ main {
   }
 }
 
-/* YouTube Thumbnail Artwork - Zoomed & Cropped to eliminate 16:9 letterbox/pillarbox borders */
+/* YouTube Thumbnail Artwork - Zoomed & Cropped with Fast Asynchronous Fade */
 .player-artwork-img {
   width: 100%;
   height: 100%;
@@ -187,9 +189,15 @@ main {
   border-radius: 50%;
   transform: scale(1.35); /* Zooms past 16:9 YouTube thumbnail white/black side borders */
   transform-origin: center center;
+  transition: opacity 120ms ease-in-out;
+  will-change: opacity;
 }
 
-/* Draggable Seek Slider - Phase 1.7 Pointer Interaction */
+.player-artwork-img.is-swapping {
+  opacity: 0.3;
+}
+
+/* Draggable Seek Slider - 100% GPU Compositor Driven (ScaleX & TranslateX) */
 #progress-bar {
   touch-action: none; /* Prevents mobile scroll while dragging timeline */
   user-select: none;
@@ -217,15 +225,18 @@ main {
 
 .slider-fill {
   height: 100%;
+  width: 100%;
   border-radius: 9999px;
   background-color: rgba(255, 255, 255, 0.9);
-  transition: width 0.05s linear;
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
 }
 
 .slider-thumb {
   position: absolute;
   top: 50%;
-  transform: translate(-50%, -50%);
+  left: 0;
   width: 12px;
   height: 12px;
   border-radius: 50%;
@@ -233,11 +244,48 @@ main {
   opacity: 0;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   transition: opacity 0.15s ease;
+  transform: translate(-50%, -50%);
+  will-change: transform;
 }
 
 .slider-container:hover .slider-thumb,
 .slider-container:active .slider-thumb {
   opacity: 1;
+}
+
+/* Coordinated Track Metadata Group Animation (50ms Exit / 90ms Enter = 140ms Total) */
+.metadata-wrapper {
+  display: flex;
+  flex-direction: column;
+  will-change: opacity, transform;
+  transition: opacity 50ms ease-in, transform 50ms ease-in;
+}
+
+.metadata-wrapper.metadata-exit {
+  opacity: 0;
+  transform: translateY(-3px);
+}
+
+.metadata-wrapper.metadata-enter-prepare {
+  opacity: 0;
+  transform: translateY(3px);
+  transition: none !important;
+}
+
+.metadata-wrapper.metadata-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 90ms cubic-bezier(0.22, 1, 0.36, 1), transform 90ms cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+/* Touch-Action Manipulation & Fast Press Feedback for Interactive Controls */
+button, .slider-container {
+  touch-action: manipulation;
+}
+
+button:active {
+  transform: scale(0.94);
+  transition: transform 80ms ease-out;
 }
 
 /* Responsive adjustments */

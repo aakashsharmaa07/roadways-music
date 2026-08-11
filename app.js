@@ -14,6 +14,10 @@ class RoadwaysMusicPlayer {
     this.metadataRetryTimer = null;
     this.metadataRafId = null;
     this.metadataResolutionToken = 0;
+    this.isAutoAdvancing = false;
+    this.trackRequestId = 0;
+    this.renderedVideoId = null;
+    this.artworkRequestId = 0;
     
     // Supabase Realtime Presence State
     this.supabaseClient = null;
@@ -38,6 +42,7 @@ class RoadwaysMusicPlayer {
     this.progressBar = document.getElementById('progress-bar');
     this.progressFill = document.getElementById('progress-fill');
     this.progressThumb = document.getElementById('progress-thumb');
+    this.metadataContainer = document.getElementById('metadata-container');
 
     this.init();
   }
@@ -46,6 +51,85 @@ class RoadwaysMusicPlayer {
     this.startClock();
     this.initSupabasePresence();
     this.setupEventListeners();
+  }
+
+  handleResolvedYouTubeTrack(track, requestId = this.trackRequestId) {
+    if (!track || !track.videoId) return;
+    if (requestId !== this.trackRequestId) return;
+    
+    // Deduplication check: Do NOT re-animate if this video ID is already rendered
+    if (track.videoId === this.renderedVideoId) {
+      return;
+    }
+
+    this.renderedVideoId = track.videoId;
+
+    const newTitle = track.title || '';
+    const newArtist = track.artist || '';
+    const newArtwork = track.artwork || `https://img.youtube.com/vi/${track.videoId}/hqdefault.jpg`;
+
+    // 1. Ultra-Fast Coordinated Track Metadata Animation (50ms Exit -> 90ms Enter = 140ms Total)
+    const currentTitle = this.songTitleElement ? this.songTitleElement.textContent : '';
+    const currentArtist = this.artistNameElement ? this.artistNameElement.textContent : '';
+
+    if (this.metadataContainer && (currentTitle !== newTitle || currentArtist !== newArtist)) {
+      this.metadataContainer.classList.remove('metadata-enter-prepare', 'metadata-enter-active');
+      this.metadataContainer.classList.add('metadata-exit');
+
+      setTimeout(() => {
+        if (requestId !== this.trackRequestId) return;
+
+        if (this.songTitleElement) this.songTitleElement.textContent = newTitle;
+        if (this.artistNameElement) this.artistNameElement.textContent = newArtist;
+
+        this.metadataContainer.classList.remove('metadata-exit');
+        this.metadataContainer.classList.add('metadata-enter-prepare');
+
+        requestAnimationFrame(() => {
+          if (requestId !== this.trackRequestId) return;
+          this.metadataContainer.classList.remove('metadata-enter-prepare');
+          this.metadataContainer.classList.add('metadata-enter-active');
+          
+          setTimeout(() => {
+            if (requestId === this.trackRequestId && this.metadataContainer) {
+              this.metadataContainer.classList.remove('metadata-enter-active');
+            }
+          }, 90);
+        });
+      }, 50);
+    } else {
+      if (this.songTitleElement) this.songTitleElement.textContent = newTitle;
+      if (this.artistNameElement) this.artistNameElement.textContent = newArtist;
+    }
+
+    // 2. Asynchronous Artwork Preload with Async Decoding & Artwork Token Protection
+    if (this.albumArtElement && newArtwork) {
+      const artworkToken = ++this.artworkRequestId;
+      this.albumArtElement.classList.add('is-swapping');
+      
+      const tempImg = new Image();
+      tempImg.decoding = 'async';
+      tempImg.src = newArtwork;
+
+      let swapped = false;
+      const completeSwap = () => {
+        if (swapped) return;
+        swapped = true;
+        if (artworkToken === this.artworkRequestId && requestId === this.trackRequestId && this.albumArtElement) {
+          this.albumArtElement.src = newArtwork;
+          this.albumArtElement.setAttribute('data-loaded-src', newArtwork);
+          this.albumArtElement.classList.remove('is-swapping');
+        }
+      };
+
+      tempImg.onload = completeSwap;
+      tempImg.onerror = completeSwap;
+      setTimeout(completeSwap, 100);
+    }
+  }
+
+  renderTrackMetadata(track, requestId = this.trackRequestId) {
+    this.handleResolvedYouTubeTrack(track, requestId);
   }
 
   // 1. SUPABASE REALTIME PRESENCE ENGINE (CHANNEL: "roadways-music")
@@ -211,6 +295,7 @@ class RoadwaysMusicPlayer {
   }
 
   onPlayerStateChange(event) {
+    const currentToken = this.trackRequestId;
     const stateNames = {
       '-1': 'UNSTARTED',
       '0': 'ENDED',
@@ -224,8 +309,10 @@ class RoadwaysMusicPlayer {
 
     switch (event.data) {
       case YT.PlayerState.PLAYING:
-        console.log('[Roadways] Real audio stream is PLAYING.');
+        if (currentToken !== this.trackRequestId) return;
+        console.log('[Roadways] Audio stream PLAYING.');
         this.isPlaying = true;
+        this.isAutoAdvancing = false;
         this.updatePlayBtnState(true);
         if (this.albumDiscElement) this.albumDiscElement.classList.add('is-playing');
         this.startTicker();
@@ -233,6 +320,7 @@ class RoadwaysMusicPlayer {
         break;
 
       case YT.PlayerState.PAUSED:
+        if (currentToken !== this.trackRequestId) return;
         console.log('[Roadways] Player PAUSED.');
         this.isPlaying = false;
         this.updatePlayBtnState(false);
@@ -246,19 +334,24 @@ class RoadwaysMusicPlayer {
         break;
 
       case YT.PlayerState.ENDED:
-        console.log('[Roadways] Track ENDED. Triggering next playlist track...');
+        console.log('[Roadways] Track ENDED.');
         this.isPlaying = false;
         this.stopTicker();
+        if (this.isAutoAdvancing) return;
+        this.isAutoAdvancing = true;
+
         if (this.ytPlayer && typeof this.ytPlayer.nextVideo === 'function') {
-          this.ytPlayer.nextVideo();
+          try { this.ytPlayer.nextVideo(); } catch (err) {}
         }
         break;
 
       case YT.PlayerState.CUED:
-        console.log('[Roadways] Playlist track CUED.');
+      case -1: // UNSTARTED
+        if (currentToken !== this.trackRequestId) return;
+        console.log(`[Roadways] [Req #${currentToken}] YOUTUBE CUED / UNSTARTED.`);
         this.currentTime = 0;
         this.updateTimeAndProgress();
-        this.syncTrackMetadata();
+        this.resolveCurrentYouTubeTrack(0, currentToken);
         break;
     }
   }
@@ -323,20 +416,25 @@ class RoadwaysMusicPlayer {
     }
   }
 
-  syncTrackMetadata(retryCount = 0) {
+  resolveCurrentYouTubeTrack(retryCount = 0, requestId = this.trackRequestId) {
+    if (requestId !== this.trackRequestId) return;
+
     this.clearMetadataRetries();
 
-    const token = ++this.metadataResolutionToken;
     const videoData = (this.ytPlayer && typeof this.ytPlayer.getVideoData === 'function') ? this.ytPlayer.getVideoData() : null;
     const videoId = videoData ? (videoData.video_id || '') : '';
+    const rawTitle = videoData ? (videoData.title || '') : '';
+    const author = videoData ? (videoData.author || '') : '';
     
-    if (videoId) {
-      this.hasResolvedInitialTrack = true;
-      const rawTitle = videoData.title || '';
-      const author = videoData.author || '';
-      
-      console.log(`[Roadways] Active Video ID: ${videoId} | Title: "${rawTitle}" (Resolved on attempt ${retryCount})`);
+    // Authoritative check: Only update UI when YouTube provides genuine videoId AND title
+    if (videoId && rawTitle) {
+      // Deduplication check: Stop retries if this video ID is already rendered
+      if (videoId === this.renderedVideoId) {
+        return;
+      }
 
+      this.hasResolvedInitialTrack = true;
+      
       let cleanTitle = rawTitle
         .replace(/\(Official Video\)/gi, '')
         .replace(/\[Official Video\]/gi, '')
@@ -347,65 +445,60 @@ class RoadwaysMusicPlayer {
         .replace(/\(HD\)/gi, '')
         .trim();
 
-      if (!cleanTitle && typeof PLAYLIST !== 'undefined' && PLAYLIST[this.currentIndex]) {
-        cleanTitle = PLAYLIST[this.currentIndex].title;
-      }
+      const activeArtwork = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+      console.log(`[Roadways] [Req #${requestId}] METADATA RESOLVED: "${cleanTitle}" by ${author}`);
+      console.log(`[Roadways] [Req #${requestId}] ARTWORK RESOLVED: ${activeArtwork}`);
 
-      if (this.songTitleElement) this.songTitleElement.textContent = cleanTitle || "Roadways 90s Hit";
-      if (this.artistNameElement) this.artistNameElement.textContent = author || "Bollywood Classic";
-      
-      if (this.albumArtElement && videoId) {
-        this.albumArtElement.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-      }
+      this.handleResolvedYouTubeTrack({
+        videoId: videoId,
+        title: cleanTitle,
+        artist: author,
+        artwork: activeArtwork
+      }, requestId);
       return;
     }
 
-    if (!this.hasResolvedInitialTrack) {
-      if (this.songTitleElement) this.songTitleElement.textContent = "Loading…";
-      if (this.artistNameElement) this.artistNameElement.textContent = "Connecting to Roadways Music";
-    }
-
-    // Attempt 0 -> Schedule immediate requestAnimationFrame check (Attempt 1)
-    if (retryCount === 0) {
-      this.metadataRafId = requestAnimationFrame(() => {
-        if (this.metadataResolutionToken === token) {
-          this.syncTrackMetadata(1);
-        }
-      });
-      return;
-    }
-
-    // Fallback timer polling (Attempts 1 to 15 at 50ms)
+    // Bounded retry polling (Attempts 1 to 15 at 40ms)
     if (retryCount < 15) {
       this.metadataRetryTimer = setTimeout(() => {
-        if (this.metadataResolutionToken === token) {
-          this.syncTrackMetadata(retryCount + 1);
+        if (requestId === this.trackRequestId) {
+          this.resolveCurrentYouTubeTrack(retryCount + 1, requestId);
         }
-      }, 50);
+      }, 40);
     }
   }
 
-  // Playback Controls
+  syncTrackMetadata(retryCount = 0, requestId = this.trackRequestId) {
+    this.resolveCurrentYouTubeTrack(retryCount, requestId);
+  }
+
   play() {
-    if (!this.isReady || !this.ytPlayer) {
-      console.warn('[Roadways] Play clicked before YouTube player is ready.');
-      return;
-    }
-    console.log('[Roadways] User pressed Play. Calling ytPlayer.playVideo()...');
-    try {
-      this.ytPlayer.playVideo();
-    } catch(err) {
-      console.error('[Roadways] Error calling playVideo():', err);
+    this.isPlaying = true;
+    this.updatePlayBtnState(true);
+    if (this.albumDiscElement) this.albumDiscElement.classList.add('is-playing');
+    this.startTicker();
+
+    if (this.isReady && this.ytPlayer && typeof this.ytPlayer.playVideo === 'function') {
+      try {
+        this.ytPlayer.playVideo();
+      } catch(err) {
+        console.error('[Roadways] Error calling playVideo():', err);
+      }
     }
   }
 
   pause() {
-    if (!this.ytPlayer) return;
-    console.log('[Roadways] User pressed Pause. Calling ytPlayer.pauseVideo()...');
-    try {
-      this.ytPlayer.pauseVideo();
-    } catch(err) {
-      console.error('[Roadways] Error calling pauseVideo():', err);
+    this.isPlaying = false;
+    this.updatePlayBtnState(false);
+    if (this.albumDiscElement) this.albumDiscElement.classList.remove('is-playing');
+    this.stopTicker();
+
+    if (this.ytPlayer && typeof this.ytPlayer.pauseVideo === 'function') {
+      try {
+        this.ytPlayer.pauseVideo();
+      } catch(err) {
+        console.error('[Roadways] Error calling pauseVideo():', err);
+      }
     }
   }
 
@@ -418,20 +511,47 @@ class RoadwaysMusicPlayer {
   }
 
   next() {
-    console.log('[Roadways] User pressed Next. Calling ytPlayer.nextVideo()...');
+    const requestId = ++this.trackRequestId;
+    console.log(`[Roadways] [Req #${requestId}] User requested NEXT track.`);
+
     this.currentTime = 0;
     this.updateProgressUI();
+
     if (this.ytPlayer && typeof this.ytPlayer.nextVideo === 'function') {
-      this.ytPlayer.nextVideo();
+      try {
+        this.ytPlayer.nextVideo();
+      } catch (err) {
+        console.warn('[Roadways] nextVideo error:', err);
+      }
     }
   }
 
   previous() {
-    console.log('[Roadways] User pressed Previous. Calling ytPlayer.previousVideo()...');
+    const requestId = ++this.trackRequestId;
+    const currentSec = (this.ytPlayer && typeof this.ytPlayer.getCurrentTime === 'function') 
+      ? (this.ytPlayer.getCurrentTime() || 0) 
+      : this.currentTime;
+
+    if (currentSec > 5) {
+      console.log(`[Roadways] [Req #${requestId}] PREVIOUS requested: position > 5s (${currentSec.toFixed(1)}s). Seeking to 0:00.`);
+      if (this.ytPlayer && typeof this.ytPlayer.seekTo === 'function') {
+        try { this.ytPlayer.seekTo(0, true); } catch (err) {}
+      }
+      this.currentTime = 0;
+      this.updateProgressUI();
+      return;
+    }
+
+    console.log(`[Roadways] [Req #${requestId}] PREVIOUS requested: position <= 5s. Calling ytPlayer.previousVideo()...`);
     this.currentTime = 0;
     this.updateProgressUI();
+
     if (this.ytPlayer && typeof this.ytPlayer.previousVideo === 'function') {
-      this.ytPlayer.previousVideo();
+      try {
+        this.ytPlayer.previousVideo();
+      } catch (err) {
+        console.warn('[Roadways] previousVideo error:', err);
+      }
     }
   }
 
@@ -470,15 +590,21 @@ class RoadwaysMusicPlayer {
 
   updateProgressUI() {
     if (this.duration <= 0) {
-      if (this.progressFill) this.progressFill.style.width = '0%';
-      if (this.progressThumb) this.progressThumb.style.left = '0%';
+      if (this.progressFill) this.progressFill.style.transform = 'scaleX(0)';
+      if (this.progressThumb) this.progressThumb.style.transform = 'translate(-50%, -50%) translateX(0px)';
       if (this.timeDisplayElement) this.timeDisplayElement.textContent = '0:00 / 0:00';
       return;
     }
 
-    const percent = Math.max(0, Math.min(100, (this.currentTime / this.duration) * 100));
-    if (this.progressFill) this.progressFill.style.width = `${percent}%`;
-    if (this.progressThumb) this.progressThumb.style.left = `${percent}%`;
+    const scaleFactor = Math.max(0, Math.min(1, this.currentTime / this.duration));
+    if (this.progressFill) {
+      this.progressFill.style.transform = `scaleX(${scaleFactor})`;
+    }
+    if (this.progressThumb && this.progressBar) {
+      const barWidth = this.progressBar.clientWidth || 300;
+      const offsetPx = scaleFactor * barWidth;
+      this.progressThumb.style.transform = `translate(${offsetPx}px, -50%) translate(-50%, 0)`;
+    }
     if (this.timeDisplayElement) {
       this.timeDisplayElement.textContent = `${this.formatTime(this.currentTime)} / ${this.formatTime(this.duration)}`;
     }
