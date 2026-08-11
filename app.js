@@ -15,9 +15,11 @@ class RoadwaysMusicPlayer {
     this.metadataRafId = null;
     this.metadataResolutionToken = 0;
     this.isAutoAdvancing = false;
-    this.trackRequestId = 0;
     this.renderedVideoId = null;
     this.artworkRequestId = 0;
+    this.playbackIntent = 'paused';
+    this.artworkCache = new Map();
+    this.isTransitioningTrack = false;
     
     // Supabase Realtime Presence State
     this.supabaseClient = null;
@@ -53,20 +55,21 @@ class RoadwaysMusicPlayer {
     this.setupEventListeners();
   }
 
-  handleResolvedYouTubeTrack(track, requestId = this.trackRequestId) {
+  handleResolvedYouTubeTrack(track) {
     if (!track || !track.videoId) return;
-    if (requestId !== this.trackRequestId) return;
     
+    const videoId = track.videoId;
+
     // Deduplication check: Do NOT re-animate if this video ID is already rendered
-    if (track.videoId === this.renderedVideoId) {
+    if (videoId === this.renderedVideoId) {
       return;
     }
 
-    this.renderedVideoId = track.videoId;
+    this.renderedVideoId = videoId;
 
     const newTitle = track.title || '';
     const newArtist = track.artist || '';
-    const newArtwork = track.artwork || `https://img.youtube.com/vi/${track.videoId}/hqdefault.jpg`;
+    const newArtwork = track.artwork || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 
     // 1. Ultra-Fast Coordinated Track Metadata Animation (50ms Exit -> 90ms Enter = 140ms Total)
     const currentTitle = this.songTitleElement ? this.songTitleElement.textContent : '';
@@ -77,8 +80,6 @@ class RoadwaysMusicPlayer {
       this.metadataContainer.classList.add('metadata-exit');
 
       setTimeout(() => {
-        if (requestId !== this.trackRequestId) return;
-
         if (this.songTitleElement) this.songTitleElement.textContent = newTitle;
         if (this.artistNameElement) this.artistNameElement.textContent = newArtist;
 
@@ -86,12 +87,11 @@ class RoadwaysMusicPlayer {
         this.metadataContainer.classList.add('metadata-enter-prepare');
 
         requestAnimationFrame(() => {
-          if (requestId !== this.trackRequestId) return;
           this.metadataContainer.classList.remove('metadata-enter-prepare');
           this.metadataContainer.classList.add('metadata-enter-active');
           
           setTimeout(() => {
-            if (requestId === this.trackRequestId && this.metadataContainer) {
+            if (this.metadataContainer) {
               this.metadataContainer.classList.remove('metadata-enter-active');
             }
           }, 90);
@@ -102,34 +102,42 @@ class RoadwaysMusicPlayer {
       if (this.artistNameElement) this.artistNameElement.textContent = newArtist;
     }
 
-    // 2. Asynchronous Artwork Preload with Async Decoding & Artwork Token Protection
+    // 2. Asynchronous Artwork Preload with In-Memory Caching & Video ID Protection
     if (this.albumArtElement && newArtwork) {
-      const artworkToken = ++this.artworkRequestId;
-      this.albumArtElement.classList.add('is-swapping');
-      
-      const tempImg = new Image();
-      tempImg.decoding = 'async';
-      tempImg.src = newArtwork;
-
-      let swapped = false;
-      const completeSwap = () => {
-        if (swapped) return;
-        swapped = true;
-        if (artworkToken === this.artworkRequestId && requestId === this.trackRequestId && this.albumArtElement) {
+      if (this.artworkCache.has(newArtwork)) {
+        if (this.renderedVideoId === videoId && this.albumArtElement) {
           this.albumArtElement.src = newArtwork;
           this.albumArtElement.setAttribute('data-loaded-src', newArtwork);
           this.albumArtElement.classList.remove('is-swapping');
         }
-      };
+      } else {
+        this.albumArtElement.classList.add('is-swapping');
+        
+        const tempImg = new Image();
+        tempImg.decoding = 'async';
+        tempImg.src = newArtwork;
 
-      tempImg.onload = completeSwap;
-      tempImg.onerror = completeSwap;
-      setTimeout(completeSwap, 100);
+        let swapped = false;
+        const completeSwap = () => {
+          if (swapped) return;
+          swapped = true;
+          this.artworkCache.set(newArtwork, true);
+          if (this.renderedVideoId === videoId && this.albumArtElement) {
+            this.albumArtElement.src = newArtwork;
+            this.albumArtElement.setAttribute('data-loaded-src', newArtwork);
+            this.albumArtElement.classList.remove('is-swapping');
+          }
+        };
+
+        tempImg.onload = completeSwap;
+        tempImg.onerror = completeSwap;
+        setTimeout(completeSwap, 100);
+      }
     }
   }
 
-  renderTrackMetadata(track, requestId = this.trackRequestId) {
-    this.handleResolvedYouTubeTrack(track, requestId);
+  renderTrackMetadata(track) {
+    this.handleResolvedYouTubeTrack(track);
   }
 
   // 1. SUPABASE REALTIME PRESENCE ENGINE (CHANNEL: "roadways-music")
@@ -305,36 +313,42 @@ class RoadwaysMusicPlayer {
       '5': 'CUED'
     };
     const stateName = stateNames[event.data] || event.data;
-    console.log(`[Roadways] Player state changed: ${stateName} (${event.data})`);
+    console.log(`[Roadways] YOUTUBE STATE: ${stateName} (${event.data})`);
 
     switch (event.data) {
       case YT.PlayerState.PLAYING:
-        if (currentToken !== this.trackRequestId) return;
-        console.log('[Roadways] Audio stream PLAYING.');
+        this.isTransitioningTrack = false;
         this.isPlaying = true;
+        this.playbackIntent = 'playing';
         this.isAutoAdvancing = false;
         this.updatePlayBtnState(true);
         if (this.albumDiscElement) this.albumDiscElement.classList.add('is-playing');
         this.startTicker();
-        this.syncTrackMetadata();
+        this.pollForYouTubeVideoChange(this.renderedVideoId, 0);
         break;
 
       case YT.PlayerState.PAUSED:
-        if (currentToken !== this.trackRequestId) return;
-        console.log('[Roadways] Player PAUSED.');
-        this.isPlaying = false;
-        this.updatePlayBtnState(false);
-        if (this.albumDiscElement) this.albumDiscElement.classList.remove('is-playing');
-        this.stopTicker();
-        this.updateTimeAndProgress();
+        if (this.playbackIntent === 'paused' || !this.isTransitioningTrack) {
+          this.isPlaying = false;
+          this.updatePlayBtnState(false);
+          if (this.albumDiscElement) this.albumDiscElement.classList.remove('is-playing');
+          this.stopTicker();
+          this.updateTimeAndProgress();
+        }
+        this.pollForYouTubeVideoChange(this.renderedVideoId, 0);
         break;
 
       case YT.PlayerState.BUFFERING:
-        console.log('[Roadways] Audio stream BUFFERING...');
+        this.isTransitioningTrack = true;
+        if (this.playbackIntent === 'playing') {
+          this.updatePlayBtnState(true);
+          if (this.albumDiscElement) this.albumDiscElement.classList.add('is-playing');
+        }
+        this.pollForYouTubeVideoChange(this.renderedVideoId, 0);
         break;
 
       case YT.PlayerState.ENDED:
-        console.log('[Roadways] Track ENDED.');
+        this.isTransitioningTrack = false;
         this.isPlaying = false;
         this.stopTicker();
         if (this.isAutoAdvancing) return;
@@ -347,11 +361,9 @@ class RoadwaysMusicPlayer {
 
       case YT.PlayerState.CUED:
       case -1: // UNSTARTED
-        if (currentToken !== this.trackRequestId) return;
-        console.log(`[Roadways] [Req #${currentToken}] YOUTUBE CUED / UNSTARTED.`);
         this.currentTime = 0;
         this.updateTimeAndProgress();
-        this.resolveCurrentYouTubeTrack(0, currentToken);
+        this.pollForYouTubeVideoChange(this.renderedVideoId, 0);
         break;
     }
   }
@@ -416,25 +428,21 @@ class RoadwaysMusicPlayer {
     }
   }
 
-  resolveCurrentYouTubeTrack(retryCount = 0, requestId = this.trackRequestId) {
-    if (requestId !== this.trackRequestId) return;
-
+  pollForYouTubeVideoChange(previousVideoId, retryCount = 0) {
     this.clearMetadataRetries();
 
     const videoData = (this.ytPlayer && typeof this.ytPlayer.getVideoData === 'function') ? this.ytPlayer.getVideoData() : null;
     const videoId = videoData ? (videoData.video_id || '') : '';
     const rawTitle = videoData ? (videoData.title || '') : '';
     const author = videoData ? (videoData.author || '') : '';
-    
-    // Authoritative check: Only update UI when YouTube provides genuine videoId AND title
-    if (videoId && rawTitle) {
-      // Deduplication check: Stop retries if this video ID is already rendered
-      if (videoId === this.renderedVideoId) {
-        return;
-      }
 
+    console.log(`[Roadways] YOUTUBE DATA CHECK (Attempt ${retryCount}): Video ID: "${videoId}", Previous Active ID: "${previousVideoId}", Title: "${rawTitle}"`);
+
+    // Case A: A new video_id AND non-empty title are available from YouTube
+    if (videoId && rawTitle && videoId !== previousVideoId) {
       this.hasResolvedInitialTrack = true;
-      
+      console.log(`[Roadways] NEW VIDEO DETECTED: Video ID: ${videoId} | Title: "${rawTitle}" by ${author}`);
+
       let cleanTitle = rawTitle
         .replace(/\(Official Video\)/gi, '')
         .replace(/\[Official Video\]/gi, '')
@@ -446,33 +454,64 @@ class RoadwaysMusicPlayer {
         .trim();
 
       const activeArtwork = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-      console.log(`[Roadways] [Req #${requestId}] METADATA RESOLVED: "${cleanTitle}" by ${author}`);
-      console.log(`[Roadways] [Req #${requestId}] ARTWORK RESOLVED: ${activeArtwork}`);
+      console.log(`[Roadways] METADATA RESOLVED: Video ID: ${videoId}, Title: "${cleanTitle}", Artist: "${author}"`);
+      console.log(`[Roadways] ARTWORK APPLIED: Video ID: ${videoId}`);
 
       this.handleResolvedYouTubeTrack({
         videoId: videoId,
         title: cleanTitle,
         artist: author,
         artwork: activeArtwork
-      }, requestId);
+      });
       return;
     }
 
-    // Bounded retry polling (Attempts 1 to 15 at 40ms)
-    if (retryCount < 15) {
+    // Case B: Initial load (previousVideoId is null) but videoId & rawTitle exist
+    if (videoId && rawTitle && !previousVideoId) {
+      this.hasResolvedInitialTrack = true;
+      console.log(`[Roadways] INITIAL VIDEO DETECTED: Video ID: ${videoId} | Title: "${rawTitle}"`);
+
+      let cleanTitle = rawTitle
+        .replace(/\(Official Video\)/gi, '')
+        .replace(/\[Official Video\]/gi, '')
+        .replace(/\(Official Audio\)/gi, '')
+        .replace(/\[Official Audio\]/gi, '')
+        .replace(/\(Full Song\)/gi, '')
+        .replace(/\[4K\]/gi, '')
+        .replace(/\(HD\)/gi, '')
+        .trim();
+
+      const activeArtwork = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+      console.log(`[Roadways] METADATA RESOLVED: Video ID: ${videoId}, Title: "${cleanTitle}", Artist: "${author}"`);
+      console.log(`[Roadways] ARTWORK APPLIED: Video ID: ${videoId}`);
+
+      this.handleResolvedYouTubeTrack({
+        videoId: videoId,
+        title: cleanTitle,
+        artist: author,
+        artwork: activeArtwork
+      });
+      return;
+    }
+
+    // Continue polling YouTube for up to 50 attempts (2 seconds) until new video_id & title appear
+    if (retryCount < 50) {
       this.metadataRetryTimer = setTimeout(() => {
-        if (requestId === this.trackRequestId) {
-          this.resolveCurrentYouTubeTrack(retryCount + 1, requestId);
-        }
+        this.pollForYouTubeVideoChange(previousVideoId, retryCount + 1);
       }, 40);
     }
   }
 
-  syncTrackMetadata(retryCount = 0, requestId = this.trackRequestId) {
-    this.resolveCurrentYouTubeTrack(retryCount, requestId);
+  resolveCurrentYouTubeTrack(retryCount = 0) {
+    this.pollForYouTubeVideoChange(this.renderedVideoId, retryCount);
+  }
+
+  syncTrackMetadata(retryCount = 0) {
+    this.pollForYouTubeVideoChange(this.renderedVideoId, retryCount);
   }
 
   play() {
+    this.playbackIntent = 'playing';
     this.isPlaying = true;
     this.updatePlayBtnState(true);
     if (this.albumDiscElement) this.albumDiscElement.classList.add('is-playing');
@@ -488,6 +527,7 @@ class RoadwaysMusicPlayer {
   }
 
   pause() {
+    this.playbackIntent = 'paused';
     this.isPlaying = false;
     this.updatePlayBtnState(false);
     if (this.albumDiscElement) this.albumDiscElement.classList.remove('is-playing');
@@ -512,7 +552,9 @@ class RoadwaysMusicPlayer {
 
   next() {
     const requestId = ++this.trackRequestId;
-    console.log(`[Roadways] [Req #${requestId}] User requested NEXT track.`);
+    const previousVideoId = this.renderedVideoId;
+    this.isTransitioningTrack = true;
+    console.log(`[Roadways] NAVIGATION: Previous Video ID: "${previousVideoId}", Navigation: NEXT (Req #${requestId})`);
 
     this.currentTime = 0;
     this.updateProgressUI();
@@ -524,6 +566,9 @@ class RoadwaysMusicPlayer {
         console.warn('[Roadways] nextVideo error:', err);
       }
     }
+
+    // Start video change detector polling until YouTube returns NEW video ID
+    this.pollForYouTubeVideoChange(previousVideoId, 0);
   }
 
   previous() {
@@ -542,7 +587,9 @@ class RoadwaysMusicPlayer {
       return;
     }
 
-    console.log(`[Roadways] [Req #${requestId}] PREVIOUS requested: position <= 5s. Calling ytPlayer.previousVideo()...`);
+    const previousVideoId = this.renderedVideoId;
+    this.isTransitioningTrack = true;
+    console.log(`[Roadways] NAVIGATION: Previous Video ID: "${previousVideoId}", Navigation: PREVIOUS (Req #${requestId})`);
     this.currentTime = 0;
     this.updateProgressUI();
 
@@ -553,6 +600,9 @@ class RoadwaysMusicPlayer {
         console.warn('[Roadways] previousVideo error:', err);
       }
     }
+
+    // Start video change detector polling until YouTube returns NEW video ID
+    this.pollForYouTubeVideoChange(previousVideoId, 0);
   }
 
   seekToPercent(percentage) {
