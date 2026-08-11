@@ -64,6 +64,7 @@ class RoadwaysMusicPlayer {
     this.shuffleOrder = [];
     this.shufflePosition = 0;
     this.isShuffleInitialized = false;
+    this.initialShuffleReady = false;
 
     this.init();
   }
@@ -76,6 +77,12 @@ class RoadwaysMusicPlayer {
 
   handleResolvedYouTubeTrack(track) {
     if (!track || !track.videoId) return;
+
+    // Strict Boot Contract: BLOCK any metadata rendering before initial shuffle is ready!
+    if (!this.initialShuffleReady) {
+      console.log('[BOOT] ignoring pre-shuffle track render attempt for videoId:', track ? track.videoId : 'unknown');
+      return;
+    }
     
     const videoId = track.videoId;
 
@@ -283,7 +290,7 @@ class RoadwaysMusicPlayer {
   }
 
   initSessionShuffle() {
-    if (this.isShuffleInitialized) return;
+    if (this.isShuffleInitialized && this.initialShuffleReady) return true;
     const playlist = (this.ytPlayer && typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
     const length = (playlist && Array.isArray(playlist)) ? playlist.length : 0;
 
@@ -291,8 +298,11 @@ class RoadwaysMusicPlayer {
       this.shuffleOrder = this.generateShuffleOrder(length);
       this.shufflePosition = 0;
       this.isShuffleInitialized = true;
-      console.log(`[Roadways Shuffle] Initialized per-session shuffle order (${length} tracks):`, this.shuffleOrder);
+      this.initialShuffleReady = true;
+      console.log(`[BOOT] shuffle ready -> initialIndex: ${this.shuffleOrder[0]} (order length: ${length})`);
+      return true;
     }
+    return false;
   }
 
   syncShufflePositionWithYouTube() {
@@ -345,6 +355,7 @@ class RoadwaysMusicPlayer {
 
     if (this.ytPlayer && typeof this.ytPlayer.cuePlaylist === 'function') {
       try {
+        console.log(`[Roadways Shuffle] CUEING INITIAL SHUFFLED TRACK AT INDEX ${initialIndex}`);
         this.ytPlayer.cuePlaylist({
           listType: 'playlist',
           list: this.playlistId,
@@ -356,7 +367,7 @@ class RoadwaysMusicPlayer {
       }
     }
 
-    // Dedicated initial track resolution requiring videoId, title AND author
+    // Dedicated initial track resolution requiring videoId, title AND author for initial shuffled track
     this.resolveInitialYouTubeTrack(0);
   }
 
@@ -546,23 +557,36 @@ class RoadwaysMusicPlayer {
   resolveInitialYouTubeTrack(retryCount = 0) {
     if (this.hasResolvedInitialTrack) return;
 
-    this.initSessionShuffle();
-    const videoData = (this.ytPlayer && typeof this.ytPlayer.getVideoData === 'function') ? this.ytPlayer.getVideoData() : null;
+    const shuffleReady = this.initSessionShuffle();
     const playlist = (this.ytPlayer && typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
 
-    let videoId = videoData ? (videoData.video_id || '') : '';
-    if (!videoId && playlist && Array.isArray(playlist) && playlist.length > 0) {
-      const initialIndex = (this.shuffleOrder && this.shuffleOrder.length > 0) ? this.shuffleOrder[0] : 0;
-      videoId = playlist[initialIndex] || playlist[0];
+    if (!shuffleReady || !playlist || !Array.isArray(playlist) || playlist.length === 0) {
+      console.log('[BOOT] shuffle not ready -> maintaining Loading state');
+      if (retryCount < 100 && !this.hasResolvedInitialTrack) {
+        this.initialRetryTimer = setTimeout(() => {
+          this.resolveInitialYouTubeTrack(retryCount + 1);
+        }, 30);
+      }
+      return;
     }
 
-    let rawTitle = videoData ? (videoData.title || '') : '';
-    let author = videoData ? (videoData.author || '') : '';
+    const initialIndex = (this.shuffleOrder && this.shuffleOrder.length > 0) ? this.shuffleOrder[0] : 0;
+    const targetVideoId = playlist[initialIndex] || '';
 
-    console.log(`[Roadways] INITIAL METADATA CHECK (Attempt ${retryCount}): videoId="${videoId}", title="${rawTitle}", author="${author}"`);
+    if (!targetVideoId) return;
 
-    // Case 1: Direct YouTube player data contains videoId, rawTitle AND author
-    if (videoId && rawTitle && author) {
+    console.log(`[BOOT] target shuffled videoId: ${targetVideoId} (index ${initialIndex})`);
+
+    const videoData = (this.ytPlayer && typeof this.ytPlayer.getVideoData === 'function') ? this.ytPlayer.getVideoData() : null;
+    let rawTitle = (videoData && videoData.video_id === targetVideoId) ? (videoData.title || '') : '';
+    let author = (videoData && videoData.video_id === targetVideoId) ? (videoData.author || '') : '';
+
+    if (videoData && videoData.video_id && videoData.video_id !== targetVideoId) {
+      console.log(`[BOOT] ignoring pre-shuffle video: ${videoData.video_id}`);
+    }
+
+    // Case 1: Direct YouTube player data contains videoId matching targetVideoId, with rawTitle AND author
+    if (rawTitle && author) {
       this.hasResolvedInitialTrack = true;
 
       let cleanTitle = rawTitle
@@ -575,11 +599,11 @@ class RoadwaysMusicPlayer {
         .replace(/\(HD\)/gi, '')
         .trim();
 
-      const activeArtwork = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-      console.log(`[Roadways] INITIAL METADATA RESOLVED DIRECTLY: "${cleanTitle}" by "${author}" | Video ID: ${videoId}`);
+      const activeArtwork = `https://img.youtube.com/vi/${targetVideoId}/hqdefault.jpg`;
+      console.log(`[BOOT] rendering initial shuffled track: ${targetVideoId} ("${cleanTitle}" by "${author}")`);
 
       this.handleResolvedYouTubeTrack({
-        videoId: videoId,
+        videoId: targetVideoId,
         title: cleanTitle,
         artist: author,
         artwork: activeArtwork
@@ -587,17 +611,17 @@ class RoadwaysMusicPlayer {
       return;
     }
 
-    // Case 2: videoId is known, but player hasn't exposed title/author while paused -> fetch oEmbed metadata
-    if (videoId && (!rawTitle || !author) && !this.isFetchingInitialOembed) {
+    // Case 2: Player hasn't exposed title/author for targetVideoId while paused -> fetch oEmbed metadata for targetVideoId
+    if (!this.isFetchingInitialOembed) {
       this.isFetchingInitialOembed = true;
-      console.log(`[Roadways] INITIAL RESOLUTION: Fetching oEmbed metadata for videoId="${videoId}"...`);
+      console.log(`[BOOT] Fetching oEmbed metadata for target shuffled videoId="${targetVideoId}"...`);
       
-      fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`)
+      fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${targetVideoId}`)
         .then(res => res.json())
         .then(data => {
           if (this.hasResolvedInitialTrack) return;
-          const fetchedTitle = data.title || rawTitle || '';
-          const fetchedAuthor = data.author_name || author || '';
+          const fetchedTitle = data.title || '';
+          const fetchedAuthor = data.author_name || '';
 
           if (fetchedTitle) {
             this.hasResolvedInitialTrack = true;
@@ -611,11 +635,11 @@ class RoadwaysMusicPlayer {
               .replace(/\(HD\)/gi, '')
               .trim();
 
-            const activeArtwork = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-            console.log(`[Roadways] INITIAL METADATA RESOLVED VIA OEMBED: "${cleanTitle}" by "${fetchedAuthor}" | Video ID: ${videoId}`);
+            const activeArtwork = `https://img.youtube.com/vi/${targetVideoId}/hqdefault.jpg`;
+            console.log(`[BOOT] rendering initial shuffled track: ${targetVideoId} ("${cleanTitle}" by "${fetchedAuthor}")`);
 
             this.handleResolvedYouTubeTrack({
-              videoId: videoId,
+              videoId: targetVideoId,
               title: cleanTitle,
               artist: fetchedAuthor,
               artwork: activeArtwork
@@ -640,6 +664,12 @@ class RoadwaysMusicPlayer {
 
   pollForYouTubeVideoChange(previousVideoId, retryCount = 0) {
     this.clearMetadataRetries();
+
+    // Guard: Before initial shuffled track is resolved, block all polling updates
+    if (!this.initialShuffleReady || !this.hasResolvedInitialTrack) {
+      this.resolveInitialYouTubeTrack(0);
+      return;
+    }
 
     const videoData = (this.ytPlayer && typeof this.ytPlayer.getVideoData === 'function') ? this.ytPlayer.getVideoData() : null;
     const videoId = videoData ? (videoData.video_id || '') : '';
@@ -710,9 +740,18 @@ class RoadwaysMusicPlayer {
     if (this.albumDiscElement) this.albumDiscElement.classList.add('is-playing');
     this.startTicker();
 
-    if (this.isReady && this.ytPlayer && typeof this.ytPlayer.playVideo === 'function') {
+    if (this.isReady && this.ytPlayer) {
       try {
-        this.ytPlayer.playVideo();
+        this.initSessionShuffle();
+        const targetIndex = (this.shuffleOrder && this.shuffleOrder.length > 0) ? this.shuffleOrder[this.shufflePosition] : 0;
+        const currentIndex = (typeof this.ytPlayer.getPlaylistIndex === 'function') ? this.ytPlayer.getPlaylistIndex() : -1;
+        
+        if (currentIndex !== targetIndex && typeof this.ytPlayer.playVideoAt === 'function') {
+          console.log(`[Roadways Shuffle] PLAY: Syncing player index to shuffleTarget ${targetIndex} (was ${currentIndex})`);
+          this.ytPlayer.playVideoAt(targetIndex);
+        } else if (typeof this.ytPlayer.playVideo === 'function') {
+          this.ytPlayer.playVideo();
+        }
       } catch(err) {
         console.error('[Roadways] Error calling playVideo():', err);
       }
