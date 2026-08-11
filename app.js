@@ -10,8 +10,7 @@ class RoadwaysMusicPlayer {
     this.isDragging = false;
     this.ytPlayer = null;
     this.tickerInterval = null;
-    this.hasResolvedInitialTrack = false;
-    this.metadataRetryTimer = null;
+    this.trackRequestId = 0;
     this.metadataRafId = null;
     this.metadataResolutionToken = 0;
     this.isAutoAdvancing = false;
@@ -26,6 +25,10 @@ class RoadwaysMusicPlayer {
     this.presenceChannel = null;
     this.passengerId = null;
     this.isInitialPresenceSynced = false;
+    this.hasResolvedInitialTrack = false;
+    this.metadataRetryTimer = null;
+    this.initialRetryTimer = null;
+    this.isFetchingInitialOembed = false;
 
     // Official YouTube Music Playlist ID
     this.playlistId = 'PLG_xwT8XI-6E';
@@ -283,7 +286,7 @@ class RoadwaysMusicPlayer {
   }
 
   onPlayerReady(event) {
-    console.log('[Roadways] Player ready & playlist cued:', this.playlistId);
+    console.log('[Roadways] INITIAL PLAYER READY');
     this.isReady = true;
     
     if (this.ytPlayer && typeof this.ytPlayer.cuePlaylist === 'function') {
@@ -298,8 +301,9 @@ class RoadwaysMusicPlayer {
         console.warn('[Roadways] cuePlaylist notice:', err);
       }
     }
-    
-    this.syncTrackMetadata();
+
+    // Dedicated initial track resolution requiring videoId, title AND author
+    this.resolveInitialYouTubeTrack(0);
   }
 
   onPlayerStateChange(event) {
@@ -363,6 +367,7 @@ class RoadwaysMusicPlayer {
       case -1: // UNSTARTED
         this.currentTime = 0;
         this.updateTimeAndProgress();
+        this.resolveInitialYouTubeTrack(0);
         this.pollForYouTubeVideoChange(this.renderedVideoId, 0);
         break;
     }
@@ -422,9 +427,105 @@ class RoadwaysMusicPlayer {
       clearTimeout(this.metadataRetryTimer);
       this.metadataRetryTimer = null;
     }
-    if (this.metadataRafId) {
-      cancelAnimationFrame(this.metadataRafId);
-      this.metadataRafId = null;
+  }
+
+  clearInitialRetries() {
+    if (this.initialRetryTimer) {
+      clearTimeout(this.initialRetryTimer);
+      this.initialRetryTimer = null;
+    }
+  }
+
+  resolveInitialYouTubeTrack(retryCount = 0) {
+    if (this.hasResolvedInitialTrack) return;
+
+    const videoData = (this.ytPlayer && typeof this.ytPlayer.getVideoData === 'function') ? this.ytPlayer.getVideoData() : null;
+    const playlist = (this.ytPlayer && typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
+
+    let videoId = videoData ? (videoData.video_id || '') : '';
+    if (!videoId && playlist && Array.isArray(playlist) && playlist.length > 0) {
+      videoId = playlist[0];
+    }
+
+    let rawTitle = videoData ? (videoData.title || '') : '';
+    let author = videoData ? (videoData.author || '') : '';
+
+    console.log(`[Roadways] INITIAL METADATA CHECK (Attempt ${retryCount}): videoId="${videoId}", title="${rawTitle}", author="${author}"`);
+
+    // Case 1: Direct YouTube player data contains videoId, rawTitle AND author
+    if (videoId && rawTitle && author) {
+      this.hasResolvedInitialTrack = true;
+
+      let cleanTitle = rawTitle
+        .replace(/\(Official Video\)/gi, '')
+        .replace(/\[Official Video\]/gi, '')
+        .replace(/\(Official Audio\)/gi, '')
+        .replace(/\[Official Audio\]/gi, '')
+        .replace(/\(Full Song\)/gi, '')
+        .replace(/\[4K\]/gi, '')
+        .replace(/\(HD\)/gi, '')
+        .trim();
+
+      const activeArtwork = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+      console.log(`[Roadways] INITIAL METADATA RESOLVED DIRECTLY: "${cleanTitle}" by "${author}" | Video ID: ${videoId}`);
+
+      this.handleResolvedYouTubeTrack({
+        videoId: videoId,
+        title: cleanTitle,
+        artist: author,
+        artwork: activeArtwork
+      });
+      return;
+    }
+
+    // Case 2: videoId is known, but player hasn't exposed title/author while paused -> fetch oEmbed metadata
+    if (videoId && (!rawTitle || !author) && !this.isFetchingInitialOembed) {
+      this.isFetchingInitialOembed = true;
+      console.log(`[Roadways] INITIAL RESOLUTION: Fetching oEmbed metadata for videoId="${videoId}"...`);
+      
+      fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (this.hasResolvedInitialTrack) return;
+          const fetchedTitle = data.title || rawTitle || '';
+          const fetchedAuthor = data.author_name || author || '';
+
+          if (fetchedTitle) {
+            this.hasResolvedInitialTrack = true;
+            let cleanTitle = fetchedTitle
+              .replace(/\(Official Video\)/gi, '')
+              .replace(/\[Official Video\]/gi, '')
+              .replace(/\(Official Audio\)/gi, '')
+              .replace(/\[Official Audio\]/gi, '')
+              .replace(/\(Full Song\)/gi, '')
+              .replace(/\[4K\]/gi, '')
+              .replace(/\(HD\)/gi, '')
+              .trim();
+
+            const activeArtwork = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+            console.log(`[Roadways] INITIAL METADATA RESOLVED VIA OEMBED: "${cleanTitle}" by "${fetchedAuthor}" | Video ID: ${videoId}`);
+
+            this.handleResolvedYouTubeTrack({
+              videoId: videoId,
+              title: cleanTitle,
+              artist: fetchedAuthor,
+              artwork: activeArtwork
+            });
+          }
+        })
+        .catch(err => {
+          console.warn('[Roadways] oEmbed fetch notice:', err);
+        })
+        .finally(() => {
+          this.isFetchingInitialOembed = false;
+        });
+    }
+
+    // High-frequency 30ms background retry (up to 100 attempts / 3.0s) while paused
+    if (retryCount < 100 && !this.hasResolvedInitialTrack) {
+      this.initialRetryTimer = setTimeout(() => {
+        this.resolveInitialYouTubeTrack(retryCount + 1);
+      }, 30);
     }
   }
 
@@ -438,8 +539,8 @@ class RoadwaysMusicPlayer {
 
     console.log(`[Roadways] YOUTUBE DATA CHECK (Attempt ${retryCount}): Video ID: "${videoId}", Previous Active ID: "${previousVideoId}", Title: "${rawTitle}"`);
 
-    // Case A: A new video_id AND non-empty title are available from YouTube
-    if (videoId && rawTitle && videoId !== previousVideoId) {
+    // Case A: A new video_id AND non-empty title & author are available from YouTube
+    if (videoId && rawTitle && author && videoId !== previousVideoId) {
       this.hasResolvedInitialTrack = true;
       console.log(`[Roadways] NEW VIDEO DETECTED: Video ID: ${videoId} | Title: "${rawTitle}" by ${author}`);
 
@@ -466,31 +567,9 @@ class RoadwaysMusicPlayer {
       return;
     }
 
-    // Case B: Initial load (previousVideoId is null) but videoId & rawTitle exist
-    if (videoId && rawTitle && !previousVideoId) {
-      this.hasResolvedInitialTrack = true;
-      console.log(`[Roadways] INITIAL VIDEO DETECTED: Video ID: ${videoId} | Title: "${rawTitle}"`);
-
-      let cleanTitle = rawTitle
-        .replace(/\(Official Video\)/gi, '')
-        .replace(/\[Official Video\]/gi, '')
-        .replace(/\(Official Audio\)/gi, '')
-        .replace(/\[Official Audio\]/gi, '')
-        .replace(/\(Full Song\)/gi, '')
-        .replace(/\[4K\]/gi, '')
-        .replace(/\(HD\)/gi, '')
-        .trim();
-
-      const activeArtwork = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-      console.log(`[Roadways] METADATA RESOLVED: Video ID: ${videoId}, Title: "${cleanTitle}", Artist: "${author}"`);
-      console.log(`[Roadways] ARTWORK APPLIED: Video ID: ${videoId}`);
-
-      this.handleResolvedYouTubeTrack({
-        videoId: videoId,
-        title: cleanTitle,
-        artist: author,
-        artwork: activeArtwork
-      });
+    // Case B: Initial load fallback if not yet resolved
+    if (!this.hasResolvedInitialTrack && videoId && rawTitle && author) {
+      this.resolveInitialYouTubeTrack(0);
       return;
     }
 
@@ -503,11 +582,15 @@ class RoadwaysMusicPlayer {
   }
 
   resolveCurrentYouTubeTrack(retryCount = 0) {
-    this.pollForYouTubeVideoChange(this.renderedVideoId, retryCount);
+    if (!this.hasResolvedInitialTrack) {
+      this.resolveInitialYouTubeTrack(retryCount);
+    } else {
+      this.pollForYouTubeVideoChange(this.renderedVideoId, retryCount);
+    }
   }
 
   syncTrackMetadata(retryCount = 0) {
-    this.pollForYouTubeVideoChange(this.renderedVideoId, retryCount);
+    this.resolveCurrentYouTubeTrack(retryCount);
   }
 
   play() {

@@ -17,7 +17,7 @@ html {
   height: 100dvh;
   width: 100vw;
   overflow: hidden;
-  background: #000;
+  background: #180f12;
 }
 
 body {
@@ -179,7 +179,7 @@ main {
   }
 }
 
-/* YouTube Thumbnail Artwork - Zoomed & Cropped with Fast Asynchronous Fade */
+/* YouTube Thumbnail Artwork - Zoomed & Cropped to Remove Burned-In Text */
 .player-artwork-img {
   width: 100%;
   height: 100%;
@@ -187,7 +187,7 @@ main {
   object-position: center center;
   display: block;
   border-radius: 50%;
-  transform: scale(1.35); /* Zooms past 16:9 YouTube thumbnail white/black side borders */
+  transform: scale(1.48); /* Zooms past YouTube thumbnail top/bottom burned-in title text */
   transform-origin: center center;
   transition: opacity 120ms ease-in-out;
   will-change: opacity;
