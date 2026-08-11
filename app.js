@@ -60,6 +60,11 @@ class RoadwaysMusicPlayer {
       direction: 'forward'
     };
 
+    // Per-Session Shuffle Playback State
+    this.shuffleOrder = [];
+    this.shufflePosition = 0;
+    this.isShuffleInitialized = false;
+
     this.init();
   }
 
@@ -266,6 +271,41 @@ class RoadwaysMusicPlayer {
     }
   }
 
+  // Per-Session Fisher-Yates Shuffle Engine
+  generateShuffleOrder(length) {
+    if (!length || length <= 0) return [];
+    const indices = Array.from({ length }, (_, i) => i);
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    return indices;
+  }
+
+  initSessionShuffle() {
+    if (this.isShuffleInitialized) return;
+    const playlist = (this.ytPlayer && typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
+    const length = (playlist && Array.isArray(playlist)) ? playlist.length : 0;
+
+    if (length > 0) {
+      this.shuffleOrder = this.generateShuffleOrder(length);
+      this.shufflePosition = 0;
+      this.isShuffleInitialized = true;
+      console.log(`[Roadways Shuffle] Initialized per-session shuffle order (${length} tracks):`, this.shuffleOrder);
+    }
+  }
+
+  syncShufflePositionWithYouTube() {
+    if (!this.shuffleOrder || this.shuffleOrder.length === 0) return;
+    const currentIndex = (this.ytPlayer && typeof this.ytPlayer.getPlaylistIndex === 'function') ? this.ytPlayer.getPlaylistIndex() : -1;
+    if (currentIndex >= 0) {
+      const pos = this.shuffleOrder.indexOf(currentIndex);
+      if (pos !== -1) {
+        this.shufflePosition = pos;
+      }
+    }
+  }
+
   // 2. YOUTUBE IFRAME PLAYER ENGINE (PLG_xwT8XI-6E)
   initYouTubePlayer() {
     console.log('[Roadways] YouTube API ready. Initializing embedded player (200x200) for playlist:', this.playlistId);
@@ -300,12 +340,15 @@ class RoadwaysMusicPlayer {
     console.log('[Roadways] INITIAL PLAYER READY');
     this.isReady = true;
     
+    this.initSessionShuffle();
+    const initialIndex = (this.shuffleOrder && this.shuffleOrder.length > 0) ? this.shuffleOrder[0] : 0;
+
     if (this.ytPlayer && typeof this.ytPlayer.cuePlaylist === 'function') {
       try {
         this.ytPlayer.cuePlaylist({
           listType: 'playlist',
           list: this.playlistId,
-          index: 0,
+          index: initialIndex,
           startSeconds: 0
         });
       } catch (err) {
@@ -367,23 +410,23 @@ class RoadwaysMusicPlayer {
         this.isTransitioningTrack = true;
         this.isAutoAdvancing = true;
 
-        const playlist = (this.ytPlayer && typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
-        const currentPlaylistIndex = (this.ytPlayer && typeof this.ytPlayer.getPlaylistIndex === 'function') ? this.ytPlayer.getPlaylistIndex() : -1;
-        const playlistLength = (playlist && Array.isArray(playlist)) ? playlist.length : 0;
+        this.initSessionShuffle();
 
-        console.log(`[Roadways] YOUTUBE PLAYLIST INDEX: current=${currentPlaylistIndex}, length=${playlistLength}`);
-
-        let nextPlaylistIndex = 0;
-        if (playlistLength > 0 && currentPlaylistIndex >= 0) {
-          nextPlaylistIndex = (currentPlaylistIndex + 1) % playlistLength;
-          if (currentPlaylistIndex === playlistLength - 1) {
-            console.log('[Roadways] AUTO-NEXT BOUNDARY: LAST -> FIRST');
-          } else {
-            console.log(`[Roadways] AUTO-NEXT: ${currentPlaylistIndex} -> ${nextPlaylistIndex}`);
+        let nextTargetIndex = 0;
+        if (this.shuffleOrder && this.shuffleOrder.length > 0) {
+          this.shufflePosition = (this.shufflePosition + 1) % this.shuffleOrder.length;
+          nextTargetIndex = this.shuffleOrder[this.shufflePosition];
+          console.log(`[Roadways Shuffle] AUTO-NEXT ENDED: position ${this.shufflePosition}/${this.shuffleOrder.length - 1} -> target YouTube index ${nextTargetIndex}`);
+        } else {
+          const playlist = (this.ytPlayer && typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
+          const currentPlaylistIndex = (this.ytPlayer && typeof this.ytPlayer.getPlaylistIndex === 'function') ? this.ytPlayer.getPlaylistIndex() : -1;
+          const playlistLength = (playlist && Array.isArray(playlist)) ? playlist.length : 0;
+          if (playlistLength > 0 && currentPlaylistIndex >= 0) {
+            nextTargetIndex = (currentPlaylistIndex + 1) % playlistLength;
           }
         }
 
-        console.log(`[Roadways] AUTO-NEXT COMMAND: playVideoAt(${nextPlaylistIndex})`);
+        console.log(`[Roadways Shuffle] AUTO-NEXT COMMAND: playVideoAt(${nextTargetIndex})`);
 
         const previousVideoId = this.renderedVideoId;
         this.currentTime = 0;
@@ -397,7 +440,7 @@ class RoadwaysMusicPlayer {
 
         if (this.ytPlayer && typeof this.ytPlayer.playVideoAt === 'function') {
           try {
-            this.ytPlayer.playVideoAt(nextPlaylistIndex);
+            this.ytPlayer.playVideoAt(nextTargetIndex);
           } catch (err) {
             console.warn('[Roadways] playVideoAt error on ENDED:', err);
           }
@@ -503,12 +546,14 @@ class RoadwaysMusicPlayer {
   resolveInitialYouTubeTrack(retryCount = 0) {
     if (this.hasResolvedInitialTrack) return;
 
+    this.initSessionShuffle();
     const videoData = (this.ytPlayer && typeof this.ytPlayer.getVideoData === 'function') ? this.ytPlayer.getVideoData() : null;
     const playlist = (this.ytPlayer && typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
 
     let videoId = videoData ? (videoData.video_id || '') : '';
     if (!videoId && playlist && Array.isArray(playlist) && playlist.length > 0) {
-      videoId = playlist[0];
+      const initialIndex = (this.shuffleOrder && this.shuffleOrder.length > 0) ? this.shuffleOrder[0] : 0;
+      videoId = playlist[initialIndex] || playlist[0];
     }
 
     let rawTitle = videoData ? (videoData.title || '') : '';
@@ -606,6 +651,7 @@ class RoadwaysMusicPlayer {
     // Case A: A new video_id AND non-empty title & author are available from YouTube
     if (videoId && rawTitle && author && videoId !== previousVideoId) {
       this.hasResolvedInitialTrack = true;
+      this.syncShufflePositionWithYouTube();
       console.log(`[Roadways] NEW VIDEO DETECTED: Video ID: ${videoId} | Title: "${rawTitle}" by ${author}`);
 
       let cleanTitle = rawTitle
@@ -707,16 +753,17 @@ class RoadwaysMusicPlayer {
     this.seekSync.active = false;
     this.updateProgressUI();
 
+    this.initSessionShuffle();
+
     if (this.ytPlayer) {
       try {
-        const index = (typeof this.ytPlayer.getPlaylistIndex === 'function') ? this.ytPlayer.getPlaylistIndex() : -1;
-        const playlist = (typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
-        const length = (playlist && Array.isArray(playlist)) ? playlist.length : 0;
+        if (this.shuffleOrder && this.shuffleOrder.length > 0) {
+          this.shufflePosition = (this.shufflePosition + 1) % this.shuffleOrder.length;
+          const targetIndex = this.shuffleOrder[this.shufflePosition];
+          console.log(`[Roadways Shuffle] NEXT: position ${this.shufflePosition}/${this.shuffleOrder.length - 1} -> target YouTube index ${targetIndex}`);
 
-        if (index >= 0 && length > 0 && index === length - 1) {
-          console.log(`[Roadways] NEXT BOUNDARY: At last track (${index}/${length - 1}). Wrapping to first track (index 0).`);
           if (typeof this.ytPlayer.playVideoAt === 'function') {
-            this.ytPlayer.playVideoAt(0);
+            this.ytPlayer.playVideoAt(targetIndex);
           } else if (typeof this.ytPlayer.nextVideo === 'function') {
             this.ytPlayer.nextVideo();
           }
@@ -742,17 +789,17 @@ class RoadwaysMusicPlayer {
     this.seekSync.active = false;
     this.updateProgressUI();
 
+    this.initSessionShuffle();
+
     if (this.ytPlayer) {
       try {
-        const index = (typeof this.ytPlayer.getPlaylistIndex === 'function') ? this.ytPlayer.getPlaylistIndex() : -1;
-        const playlist = (typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
-        const length = (playlist && Array.isArray(playlist)) ? playlist.length : 0;
+        if (this.shuffleOrder && this.shuffleOrder.length > 0) {
+          this.shufflePosition = (this.shufflePosition - 1 + this.shuffleOrder.length) % this.shuffleOrder.length;
+          const targetIndex = this.shuffleOrder[this.shufflePosition];
+          console.log(`[Roadways Shuffle] PREVIOUS: position ${this.shufflePosition}/${this.shuffleOrder.length - 1} -> target YouTube index ${targetIndex}`);
 
-        if (index >= 0 && length > 0) {
-          const prevIndex = (index - 1 + length) % length;
-          console.log(`[Roadways] PREVIOUS BOUNDARY: Current index ${index}, wrapping to previous track index ${prevIndex} of ${length}.`);
           if (typeof this.ytPlayer.playVideoAt === 'function') {
-            this.ytPlayer.playVideoAt(prevIndex);
+            this.ytPlayer.playVideoAt(targetIndex);
           } else if (typeof this.ytPlayer.previousVideo === 'function') {
             this.ytPlayer.previousVideo();
           }
