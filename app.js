@@ -49,11 +49,16 @@ class RoadwaysMusicPlayer {
     this.progressThumb = document.getElementById('progress-thumb');
     this.metadataContainer = document.getElementById('metadata-container');
 
-    // Perfect Seek Dragging State
+    // Perfect Seek Dragging & Synchronization Lock State
     this.isSeeking = false;
     this.dragTrackRect = null;
     this.dragRafId = null;
     this.pendingClientX = 0;
+    this.seekSync = {
+      active: false,
+      targetTime: 0,
+      direction: 'forward'
+    };
 
     this.init();
   }
@@ -357,17 +362,50 @@ class RoadwaysMusicPlayer {
         this.pollForYouTubeVideoChange(this.renderedVideoId, 0);
         break;
 
-      case YT.PlayerState.ENDED:
-        this.isTransitioningTrack = false;
-        this.isPlaying = false;
-        this.stopTicker();
-        if (this.isAutoAdvancing) return;
+      case YT.PlayerState.ENDED: {
+        console.log('[Roadways] ENDED fired');
+        this.isTransitioningTrack = true;
         this.isAutoAdvancing = true;
 
-        if (this.ytPlayer && typeof this.ytPlayer.nextVideo === 'function') {
-          try { this.ytPlayer.nextVideo(); } catch (err) {}
+        const playlist = (this.ytPlayer && typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
+        const currentPlaylistIndex = (this.ytPlayer && typeof this.ytPlayer.getPlaylistIndex === 'function') ? this.ytPlayer.getPlaylistIndex() : -1;
+        const playlistLength = (playlist && Array.isArray(playlist)) ? playlist.length : 0;
+
+        console.log(`[Roadways] YOUTUBE PLAYLIST INDEX: current=${currentPlaylistIndex}, length=${playlistLength}`);
+
+        let nextPlaylistIndex = 0;
+        if (playlistLength > 0 && currentPlaylistIndex >= 0) {
+          nextPlaylistIndex = (currentPlaylistIndex + 1) % playlistLength;
+          if (currentPlaylistIndex === playlistLength - 1) {
+            console.log('[Roadways] AUTO-NEXT BOUNDARY: LAST -> FIRST');
+          } else {
+            console.log(`[Roadways] AUTO-NEXT: ${currentPlaylistIndex} -> ${nextPlaylistIndex}`);
+          }
         }
+
+        console.log(`[Roadways] AUTO-NEXT COMMAND: playVideoAt(${nextPlaylistIndex})`);
+
+        const previousVideoId = this.renderedVideoId;
+        this.currentTime = 0;
+        this.seekSync.active = false;
+        this.playbackIntent = 'playing';
+        this.isPlaying = true;
+        this.updatePlayBtnState(true);
+        if (this.albumDiscElement) this.albumDiscElement.classList.add('is-playing');
+        this.updateProgressUI();
+        this.startTicker();
+
+        if (this.ytPlayer && typeof this.ytPlayer.playVideoAt === 'function') {
+          try {
+            this.ytPlayer.playVideoAt(nextPlaylistIndex);
+          } catch (err) {
+            console.warn('[Roadways] playVideoAt error on ENDED:', err);
+          }
+        }
+
+        this.pollForYouTubeVideoChange(previousVideoId, 0);
         break;
+      }
 
       case YT.PlayerState.CUED:
       case -1: // UNSTARTED
@@ -421,10 +459,30 @@ class RoadwaysMusicPlayer {
     
     const current = this.ytPlayer.getCurrentTime() || 0;
     const dur = this.ytPlayer.getDuration() || 0;
-    
-    this.currentTime = current;
     this.duration = dur;
     
+    // Seek Synchronization Reconciliation (Prevents stale YouTube getCurrentTime() responses from jumping UI)
+    if (this.seekSync.active) {
+      if (this.seekSync.direction === 'forward') {
+        if (current < this.seekSync.targetTime - 0.5) {
+          // YouTube has not caught up yet to forward seek target -> maintain target position
+          return;
+        } else {
+          // YouTube caught up! Release lock
+          this.seekSync.active = false;
+        }
+      } else {
+        if (current > this.seekSync.targetTime + 1.0) {
+          // YouTube has not caught up yet to backward seek target -> maintain target position
+          return;
+        } else {
+          // YouTube caught up! Release lock
+          this.seekSync.active = false;
+        }
+      }
+    }
+
+    this.currentTime = current;
     this.updateProgressUI();
   }
 
@@ -646,6 +704,7 @@ class RoadwaysMusicPlayer {
     console.log(`[Roadways] NAVIGATION: Previous Video ID: "${previousVideoId}", Navigation: NEXT (Req #${requestId})`);
 
     this.currentTime = 0;
+    this.seekSync.active = false;
     this.updateProgressUI();
 
     if (this.ytPlayer) {
@@ -680,6 +739,7 @@ class RoadwaysMusicPlayer {
     console.log(`[Roadways] NAVIGATION: Previous Video ID: "${previousVideoId}", Navigation: PREVIOUS (Req #${requestId})`);
 
     this.currentTime = 0;
+    this.seekSync.active = false;
     this.updateProgressUI();
 
     if (this.ytPlayer) {
@@ -711,6 +771,15 @@ class RoadwaysMusicPlayer {
   seekToSeconds(seconds) {
     if (this.duration <= 0) return;
     const targetSeconds = Math.max(0, Math.min(this.duration, seconds));
+    
+    // Determine direction relative to current position
+    const direction = targetSeconds >= this.currentTime ? 'forward' : 'backward';
+
+    // Lock seekSync state to prevent stale YouTube getCurrentTime() responses from pulling UI backward/forward
+    this.seekSync.active = true;
+    this.seekSync.targetTime = targetSeconds;
+    this.seekSync.direction = direction;
+
     this.currentTime = targetSeconds;
     this.updateProgressUI();
 
