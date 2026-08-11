@@ -648,11 +648,24 @@ class RoadwaysMusicPlayer {
     this.currentTime = 0;
     this.updateProgressUI();
 
-    if (this.ytPlayer && typeof this.ytPlayer.nextVideo === 'function') {
+    if (this.ytPlayer) {
       try {
-        this.ytPlayer.nextVideo();
+        const index = (typeof this.ytPlayer.getPlaylistIndex === 'function') ? this.ytPlayer.getPlaylistIndex() : -1;
+        const playlist = (typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
+        const length = (playlist && Array.isArray(playlist)) ? playlist.length : 0;
+
+        if (index >= 0 && length > 0 && index === length - 1) {
+          console.log(`[Roadways] NEXT BOUNDARY: At last track (${index}/${length - 1}). Wrapping to first track (index 0).`);
+          if (typeof this.ytPlayer.playVideoAt === 'function') {
+            this.ytPlayer.playVideoAt(0);
+          } else if (typeof this.ytPlayer.nextVideo === 'function') {
+            this.ytPlayer.nextVideo();
+          }
+        } else if (typeof this.ytPlayer.nextVideo === 'function') {
+          this.ytPlayer.nextVideo();
+        }
       } catch (err) {
-        console.warn('[Roadways] nextVideo error:', err);
+        console.warn('[Roadways] next error:', err);
       }
     }
 
@@ -662,31 +675,32 @@ class RoadwaysMusicPlayer {
 
   previous() {
     const requestId = ++this.trackRequestId;
-    const currentSec = (this.ytPlayer && typeof this.ytPlayer.getCurrentTime === 'function') 
-      ? (this.ytPlayer.getCurrentTime() || 0) 
-      : this.currentTime;
-
-    if (currentSec > 5) {
-      console.log(`[Roadways] [Req #${requestId}] PREVIOUS requested: position > 5s (${currentSec.toFixed(1)}s). Seeking to 0:00.`);
-      if (this.ytPlayer && typeof this.ytPlayer.seekTo === 'function') {
-        try { this.ytPlayer.seekTo(0, true); } catch (err) {}
-      }
-      this.currentTime = 0;
-      this.updateProgressUI();
-      return;
-    }
-
     const previousVideoId = this.renderedVideoId;
     this.isTransitioningTrack = true;
     console.log(`[Roadways] NAVIGATION: Previous Video ID: "${previousVideoId}", Navigation: PREVIOUS (Req #${requestId})`);
+
     this.currentTime = 0;
     this.updateProgressUI();
 
-    if (this.ytPlayer && typeof this.ytPlayer.previousVideo === 'function') {
+    if (this.ytPlayer) {
       try {
-        this.ytPlayer.previousVideo();
+        const index = (typeof this.ytPlayer.getPlaylistIndex === 'function') ? this.ytPlayer.getPlaylistIndex() : -1;
+        const playlist = (typeof this.ytPlayer.getPlaylist === 'function') ? this.ytPlayer.getPlaylist() : null;
+        const length = (playlist && Array.isArray(playlist)) ? playlist.length : 0;
+
+        if (index >= 0 && length > 0) {
+          const prevIndex = (index - 1 + length) % length;
+          console.log(`[Roadways] PREVIOUS BOUNDARY: Current index ${index}, wrapping to previous track index ${prevIndex} of ${length}.`);
+          if (typeof this.ytPlayer.playVideoAt === 'function') {
+            this.ytPlayer.playVideoAt(prevIndex);
+          } else if (typeof this.ytPlayer.previousVideo === 'function') {
+            this.ytPlayer.previousVideo();
+          }
+        } else if (typeof this.ytPlayer.previousVideo === 'function') {
+          this.ytPlayer.previousVideo();
+        }
       } catch (err) {
-        console.warn('[Roadways] previousVideo error:', err);
+        console.warn('[Roadways] previous error:', err);
       }
     }
 
