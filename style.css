@@ -300,6 +300,36 @@ button:active {
 
 /* Responsive Mobile Optimizations & Compositor Layer Promotion */
 @media (max-width: 640px) {
+  /* Targeted Mobile Top Header Control Group Fix (Single Horizontal Row) */
+  #live-clock,
+  #passenger-pill,
+  #header-links {
+    top: 1.25rem;
+    align-items: center;
+  }
+
+  #live-clock {
+    left: 0.75rem;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.8125rem;
+  }
+
+  #passenger-pill {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    max-width: fit-content;
+  }
+
+  #header-links {
+    right: 0.75rem;
+    gap: 0.35rem;
+  }
+
+  #header-links a {
+    padding: 0.45rem;
+  }
+
   .roadways-logo-container {
     margin-top: 9vh;
   }
@@ -319,5 +349,26 @@ button:active {
     width: 64px;
     height: 64px;
     transform: translateZ(0);
+  }
+}
+
+/* Extra Tight Mobile Viewports (<= 375px) */
+@media (max-width: 375px) {
+  #live-clock {
+    left: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.75rem;
+  }
+  #passenger-pill {
+    padding: 0.3rem 0.55rem;
+    font-size: 0.75rem;
+    gap: 0.35rem;
+  }
+  #header-links {
+    right: 0.5rem;
+    gap: 0.25rem;
+  }
+  #header-links a {
+    padding: 0.4rem;
   }
 }
