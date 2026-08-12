@@ -676,8 +676,6 @@ class RoadwaysMusicPlayer {
     const rawTitle = videoData ? (videoData.title || '') : '';
     const author = videoData ? (videoData.author || '') : '';
 
-    console.log(`[Roadways] YOUTUBE DATA CHECK (Attempt ${retryCount}): Video ID: "${videoId}", Previous Active ID: "${previousVideoId}", Title: "${rawTitle}"`);
-
     // Case A: A new video_id AND non-empty title & author are available from YouTube
     if (videoId && rawTitle && author && videoId !== previousVideoId) {
       this.hasResolvedInitialTrack = true;

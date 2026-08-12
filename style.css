@@ -287,6 +287,10 @@ main {
 /* Touch-Action Manipulation & Fast Press Feedback for Interactive Controls */
 button, .slider-container {
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 button:active {
@@ -294,7 +298,7 @@ button:active {
   transition: transform 80ms ease-out;
 }
 
-/* Responsive adjustments */
+/* Responsive Mobile Optimizations & Compositor Layer Promotion */
 @media (max-width: 640px) {
   .roadways-logo-container {
     margin-top: 9vh;
@@ -305,9 +309,15 @@ button:active {
   .fixed-player-wrapper {
     bottom: 9vh;
     padding: 0 1rem;
+    transform: translateZ(0);
+  }
+  .glass-player {
+    transform: translateZ(0);
+    -webkit-tap-highlight-color: transparent;
   }
   .player-artwork-box {
     width: 64px;
     height: 64px;
+    transform: translateZ(0);
   }
 }
